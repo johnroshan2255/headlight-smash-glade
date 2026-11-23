@@ -1,0 +1,17 @@
+{
+  "name": "Headlight: Smash Glade",
+  "short_name": "Smash Glade",
+  "description": "Drop-in multiplayer demolition derby for tiny headlight buggies in a foggy, explosive forest.",
+  "start_url": "./?source=app",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
