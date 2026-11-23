@@ -288,6 +288,7 @@ uniform vec3 view_position;
 uniform float uTime;
 uniform float uEmissive;
 uniform float uNearFade;
+uniform float uOcc;
 uniform vec4 uRing0;
 uniform vec4 uRing1;
 uniform vec4 uRing2;
@@ -304,6 +305,12 @@ ${SPOT_GLSL}
 void main(void) {
   float camD = length(vWorld - view_position);
   if (camD < uNearFade && hash12(floor(gl_FragCoord.xy)) > (camD - 1.0) / (uNearFade - 1.0)) discard;
+  // see-through: anything between the high toy camera and your buggy dissolves to a sparse dither
+  vec3 oSeg = uPlayer - view_position;
+  float oT = clamp(dot(vWorld - view_position, oSeg) / max(dot(oSeg, oSeg), 0.001), 0.0, 1.0);
+  float oD = length(vWorld - (view_position + oSeg * oT));
+  float occ = (1.0 - smoothstep(2.2, 3.4, oD)) * (1.0 - smoothstep(0.8, 0.93, oT)) * step(uPlayer.y + 1.2, vWorld.y) * uOcc;
+  if (hash12(floor(gl_FragCoord.xy) + 17.0) < occ) discard;
   vec3 n = normalize(vNormal);
   vec3 V = normalize(view_position - vWorld);
   if (dot(n, V) < 0.0) n = -n; // two-sided surfaces (wings, cloth) light from the side we see
@@ -345,6 +352,7 @@ uniform view_position: vec3f;
 uniform uTime: f32;
 uniform uEmissive: f32;
 uniform uNearFade: f32;
+uniform uOcc: f32;
 uniform uRing0: vec4f;
 uniform uRing1: vec4f;
 uniform uRing2: vec4f;
@@ -363,6 +371,11 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
   var output: FragmentOutput;
   let camD = length(input.vWorld - uniform.view_position);
   if (camD < uniform.uNearFade && hash12(floor(input.position.xy)) > (camD - 1.0) / (uniform.uNearFade - 1.0)) { discard; }
+  let oSeg = uniform.uPlayer - uniform.view_position;
+  let oT = clamp(dot(input.vWorld - uniform.view_position, oSeg) / max(dot(oSeg, oSeg), 0.001), 0.0, 1.0);
+  let oD = length(input.vWorld - (uniform.view_position + oSeg * oT));
+  let occ = (1.0 - smoothstep(2.2, 3.4, oD)) * (1.0 - smoothstep(0.8, 0.93, oT)) * step(uniform.uPlayer.y + 1.2, input.vWorld.y) * uniform.uOcc;
+  if (hash12(floor(input.position.xy) + 17.0) < occ) { discard; }
   var n = normalize(input.vNormal);
   let V = normalize(uniform.view_position - input.vWorld);
   if (dot(n, V) < 0.0) { n = -n; }

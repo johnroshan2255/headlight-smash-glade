@@ -6,7 +6,7 @@ const metal = (v = 0) => rgba(0.1 + v, 0.1 + v, 0.11 + v, CLS.CHAR);
 const iron = (v = 0) => rgba(0.18 + v, 0.18 + v, 0.19 + v, CLS.STONE);
 const wood = (v = 0) => rgba(0.2 + v, 0.15 + v, 0.1 + v, CLS.GROUND);
 const bone = (v = 0) => rgba(0.62 + v, 0.58 + v, 0.5 + v, CLS.CHAR);
-const paintOf = ([r, g, b]) => (v = 0) => rgba(r * 0.6 + v, g * 0.6 + v, b * 0.6 + v, CLS.CHAR);
+const paintOf = ([r, g, b]) => (v = 0) => rgba(r * 0.95 + v, g * 0.95 + v, b * 0.95 + v, CLS.CHAR);
 
 function driver(mb, x, y, z, color) {
   addLathe(mb, [[0.24, 0], [0.26, 0.2], [0.2, 0.42], [0, 0.46]], { seg: 10, x, y, z, colFn: () => rgba(0.14, 0.13, 0.13, CLS.CHAR) });
@@ -126,6 +126,19 @@ export const VEHICLES = [
   { id: 'dozer', name: 'Shrine Dozer', blurb: 'Slow. Wide stone blade. Unstoppable.', mass: 340, top: 16, accel: 17, grip: 17, steer: 0.48, k: 32, damp: 3.6, rest: 0.35, boostF: 13, inertia: [1.1, 1.2, 0.6],
     wheels: [[-0.9, 0.9, 1, 0.42], [0.9, 0.9, 1, 0.42], [-0.9, -1.1, 0, 0.42], [0.9, -1.1, 0, 0.42]], spheres: [[0, 0.2, 1.3, 0.65], [0, 0.3, -0.3, 0.75]], lamps: [[-0.45, 1.25, 0.08], [0.45, 1.25, 0.08]], seat: [0, 1.35, -0.42], flame: [-0.45, 1.95, -0.95], front: 1.9, plowish: true },
 ];
+// Toy scale: the meshes are modelled at "real buggy" size and the chassis entity is scaled down;
+// the physics (wheels, colliders, suspension) is scaled here to match. Lamps/seat/flame/front stay
+// in chassis-local (unscaled) units because they hang off the scaled chassis.
+export const SCALE = 0.58;
+for (const v of VEHICLES) {
+  v.wheels = v.wheels.map(([x, z, f, r]) => [x * SCALE, z * SCALE, f, r * SCALE]);
+  v.spheres = v.spheres.map(([x, y, z, r]) => [x * SCALE, y * SCALE, z * SCALE, r * SCALE]);
+  v.rest *= SCALE;
+  v.k /= SCALE; // same relative sag
+  v.damp /= Math.sqrt(SCALE);
+  v.inertia = v.inertia.map((i) => i * SCALE * SCALE);
+  v.top *= 0.85; // small cars feel faster: trim the top speed a little
+}
 export const VEHICLE_IDS = VEHICLES.map((v) => v.id);
 export const vehicleSpec = (id) => VEHICLES.find((v) => v.id === id) || VEHICLES[0];
 

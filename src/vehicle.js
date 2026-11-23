@@ -4,12 +4,12 @@ import { CLS, worldMaterial } from './shaders.js';
 import { MeshBuilder, rgba, addTube, addLathe, addSphere, addBox } from './meshes.js';
 import { Body, qrot, qFromAxisAngle, V } from './physics.js';
 import { hatMesh } from './hats.js';
-import { vehicleSpec, chassisFor } from './vehicles.js';
+import { vehicleSpec, chassisFor, SCALE } from './vehicles.js';
 import { LAYOUT } from './layout.js';
 
-// muted body colours so players read apart (monochrome mode turns them to greys)
-export const CAR_COLORS = [[0.5, 0.2, 0.12], [0.15, 0.4, 0.42], [0.6, 0.48, 0.15], [0.3, 0.38, 0.18], [0.4, 0.22, 0.38], [0.3, 0.36, 0.46], [0.62, 0.58, 0.5], [0.5, 0.12, 0.14]];
-export const CAR_COLOR_NAMES = ['Rust', 'Teal', 'Mustard', 'Moss', 'Plum', 'Slate', 'Bone', 'Crimson'];
+// bright toy paint, so the little buggies pop out of the grey fog (monochrome mode greys them)
+export const CAR_COLORS = [[0.86, 0.16, 0.1], [0.12, 0.42, 0.86], [0.95, 0.72, 0.1], [0.2, 0.68, 0.26], [0.6, 0.26, 0.8], [0.98, 0.45, 0.08], [0.92, 0.9, 0.84], [0.1, 0.72, 0.7]];
+export const CAR_COLOR_NAMES = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange', 'White', 'Teal'];
 
 const BOOST_TOP_K = 1.45, ROCKET_TOP_K = 1.9;
 
@@ -83,13 +83,16 @@ export class Car {
     this.root = new pc.Entity(`car-${id}`);
     app.root.addChild(this.root);
     this.chassis = ent(chassisFor(app.graphicsDevice, S.id, CAR_COLORS[colorIdx % CAR_COLORS.length], colorIdx), A.mat, this.root, 'chassis');
+    this.chassis.setLocalScale(SCALE, SCALE, SCALE);
     this.lightMat = worldMaterial({ emissive: 2.2 });
     this.lamps = S.lamps.map(([x, y, z]) => { const e = ent(A.light, this.lightMat, this.chassis, 'lamp'); e.setLocalPosition(x, y, z); return e; });
     this.wheels = S.wheels.map(([x, z, front, r]) => {
       const pivot = new pc.Entity('wheelPivot');
       this.root.addChild(pivot);
-      if (!A.wheels.has(r)) A.wheels.set(r, wheelMesh(app.graphicsDevice, r));
-      const spin = ent(A.wheels.get(r), A.wheelMat, pivot, 'wheel');
+      const r0 = Math.round((r / SCALE) * 100) / 100; // modelled at full size, shown at toy scale
+      if (!A.wheels.has(r0)) A.wheels.set(r0, wheelMesh(app.graphicsDevice, r0));
+      const spin = ent(A.wheels.get(r0), A.wheelMat, pivot, 'wheel');
+      spin.setLocalScale(SCALE, SCALE, SCALE);
       return { x, z, front: !!front, r, pivot, spin, comp: 0, prevComp: 0, contact: false, angle: 0, dist: S.rest + r };
     });
     this.gadgetEnts = {};
@@ -244,13 +247,13 @@ export class Car {
     }
     if (contacts === 0) {
       // air control: pitch with throttle, roll with steer -> flips and barrel rolls
-      const I = S.mass * 2.2;
+      const I = S.mass * 2.2 * SCALE * SCALE;
       b.addTorque(_rt[0] * inp.throttle * I + _fw[0] * -inp.steer * I * 1.3, _rt[1] * inp.throttle * I + _fw[1] * -inp.steer * I * 1.3, _rt[2] * inp.throttle * I + _fw[2] * -inp.steer * I * 1.3);
     } else if (_up[1] < 0.97) {
       // gentle self-righting on the ground
       // torque along up x worldUp pulls the roof back toward the sky; damp the roll/pitch rate
       const k = MASS * 9 * (S.inertia[0] + S.inertia[2]);
-      b.addTorque(-_up[2] * k - b.w[0] * MASS * 0.9, 0, _up[0] * k - b.w[2] * MASS * 0.9);
+      b.addTorque(-_up[2] * k - b.w[0] * MASS * 0.9 * SCALE * SCALE, 0, _up[0] * k - b.w[2] * MASS * 0.9 * SCALE * SCALE);
     }
     // keep spin sane
     const wl = V.len(b.w);
@@ -368,6 +371,7 @@ export class Car {
     // pop the hat
     const p = this.body.p;
     this.hatEnt.reparent(this.app.root);
+    this.hatEnt.setLocalScale(SCALE, SCALE, SCALE);
     this.hatEnt.enabled = true;
     this.cork = { p: [p[0], p[1] + 1, p[2]], v: [(Math.random() - 0.5) * 3, 13, (Math.random() - 0.5) * 3], spin: 0 };
   }
@@ -375,6 +379,7 @@ export class Car {
   unwreck(spawn) {
     this.cork = null;
     this.hatEnt.reparent(this.chassis);
+    this.hatEnt.setLocalScale(1, 1, 1);
     this.hatEnt.setLocalPosition(this.spec.seat[0], this.spec.seat[1], this.spec.seat[2]);
     this.hatEnt.setLocalEulerAngles(0, 0, 0);
     this.chassis.enabled = true;
@@ -386,7 +391,7 @@ export class Car {
   headlight(out) {
     const b = this.body;
     b.axis(2, _fw); b.axis(1, _up);
-    const f = this.spec.front, u = this.spec.lamps[0][1] + 0.2;
+    const f = this.spec.front * SCALE, u = (this.spec.lamps[0][1] + 0.2) * SCALE;
     out.p[0] = b.p[0] + _fw[0] * f + _up[0] * u; out.p[1] = b.p[1] + _fw[1] * f + _up[1] * u; out.p[2] = b.p[2] + _fw[2] * f + _up[2] * u;
     out.d[0] = _fw[0] * 0.95 - _up[0] * 0.3; out.d[1] = _fw[1] * 0.95 - _up[1] * 0.3; out.d[2] = _fw[2] * 0.95 - _up[2] * 0.3;
     const dl = Math.hypot(out.d[0], out.d[1], out.d[2]) || 1;

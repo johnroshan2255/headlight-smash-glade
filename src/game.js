@@ -289,8 +289,8 @@ export async function startGame(loader) {
   const moonDir = new Float32Array([-0.45, 0.72, -0.53]);
   { const l = Math.hypot(...moonDir); for (let i = 0; i < 3; i++) moonDir[i] /= l; }
   U('uMoonDir').setValue(moonDir);
-  U('uMoonCol').setValue(new Float32Array([0.3, 0.36, 0.44]));
-  U('uSkyAmb').setValue(new Float32Array([0.13, 0.16, 0.17]));
+  U('uMoonCol').setValue(new Float32Array([0.42, 0.48, 0.56]));
+  U('uSkyAmb').setValue(new Float32Array([0.19, 0.22, 0.23]));
   U('uGroundAmb').setValue(new Float32Array([0.03, 0.03, 0.035]));
   const HAZE = new Float32Array([0.3, 0.35, 0.355]);
   u.haze.setValue(HAZE);
@@ -335,39 +335,60 @@ export async function startGame(loader) {
   setupFullscreen({ button: $('btnFull'), canvas, touchDevice: touchUI, onChange: () => app.resizeCanvas() });
 
   // ---------------------------------------------------------------- chase camera
-  const cam = { yaw: 0, pitch: 0.4, dist: info.mobile ? 12.5 : 11.5, orbit: 0, t: 0 };
+  // toy camera (default): high, fixed-angle, follows the buggy like a tabletop toy; the world
+  // doesn't swing around when you steer. Chase camera: classic behind-the-car view.
+  let camMode = store.get('camera', 'toy');
+  const cam = { yaw: 0.62, pitch: 0.4, dist: 11.5, orbit: 0, toyYaw: 0.62, toyPitch: 0.8, toyDist: info.mobile ? 17 : 19, lead: [0, 0] };
   const camPos = new pc.Vec3(0, 10, 30), camTarget = new pc.Vec3(), _look = new pc.Vec3();
+  U('uOcc').setValue(0); // only trees, rocks and ruins dissolve (never the ground)
+  const setOcc = () => { for (const m of [world.mats.props, world.mats.rocks, world.mats.ruins, sandbox.mats.tree]) m.setParameter('uOcc', camMode === 'toy' ? 1 : 0); };
+  setOcc();
   function updateCamera(dt) {
     const c = me;
-    cam.orbit += input.consumeLook();
-    cam.orbit *= Math.exp(-dt * (input.dragging ? 0 : 1.2));
-    cam.dist = clamp(cam.dist * (1 + input.consumeZoom()), 7, 24);
+    const look = input.consumeLook(), zoom = input.consumeZoom();
+    const toy = camMode === 'toy';
+    if (toy) {
+      cam.toyYaw += look;
+      cam.toyDist = clamp(cam.toyDist * (1 + zoom), 9, 36);
+    } else {
+      cam.orbit += look;
+      cam.orbit *= Math.exp(-dt * (input.dragging ? 0 : 1.2));
+      cam.dist = clamp(cam.dist * (1 + zoom), 7, 24);
+    }
     if (c) {
       const b = c.body;
       b.axis(2, _fw);
-      const heading = Math.atan2(_fw[0], _fw[2]);
-      // follow the travel direction when moving fast, the nose when slow
-      const vel = Math.atan2(b.v[0], b.v[2]);
-      const target = c.speed > 4 && V.dot(b.v, _fw) > 0 ? vel : heading;
-      let d = target - cam.yaw;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      cam.yaw += d * Math.min(1, dt * 3.2);
-      const k = 1 - Math.exp(-dt * 7);
-      camTarget.x += (b.p[0] - camTarget.x) * k; camTarget.y += (b.p[1] + 1.1 - camTarget.y) * k; camTarget.z += (b.p[2] - camTarget.z) * k;
+      if (!toy) {
+        const heading = Math.atan2(_fw[0], _fw[2]);
+        const vel = Math.atan2(b.v[0], b.v[2]);
+        const target = c.speed > 4 && V.dot(b.v, _fw) > 0 ? vel : heading;
+        let d = target - cam.yaw;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        cam.yaw += d * Math.min(1, dt * 3.2);
+      }
+      // look a little ahead of where the buggy is going
+      const lk = 1 - Math.exp(-dt * 2.5);
+      cam.lead[0] += ((toy ? b.v[0] * 0.28 : 0) - cam.lead[0]) * lk;
+      cam.lead[1] += ((toy ? b.v[2] * 0.28 : 0) - cam.lead[1]) * lk;
+      const k = 1 - Math.exp(-dt * (toy ? 5 : 7));
+      camTarget.x += (b.p[0] + cam.lead[0] - camTarget.x) * k; camTarget.y += (b.p[1] + (toy ? 0.3 : 1.1) - camTarget.y) * k; camTarget.z += (b.p[2] + cam.lead[1] - camTarget.z) * k;
     }
-    const yaw = cam.yaw + cam.orbit + Math.PI;
-    const dist = cam.dist + (me ? me.speed * 0.08 : 0);
-    camPos.set(camTarget.x + Math.sin(yaw) * Math.cos(cam.pitch) * dist, camTarget.y + Math.sin(cam.pitch) * dist + 1.2, camTarget.z + Math.cos(yaw) * Math.cos(cam.pitch) * dist);
+    const yaw = toy ? cam.toyYaw : cam.yaw + cam.orbit + Math.PI;
+    const pitch = toy ? cam.toyPitch : cam.pitch;
+    const dist = toy ? cam.toyDist + (me ? me.speed * 0.12 : 0) : cam.dist + (me ? me.speed * 0.08 : 0);
+    camPos.set(camTarget.x + Math.sin(yaw) * Math.cos(pitch) * dist, camTarget.y + Math.sin(pitch) * dist + (toy ? 0 : 1.2), camTarget.z + Math.cos(yaw) * Math.cos(pitch) * dist);
     const minY = world.height(camPos.x, camPos.z) + 1.4;
     if (camPos.y < minY) camPos.y = minY;
-    // screen shake from explosions
     const s = fx.shake * fx.shake * 0.6;
     if (s > 0.001) { camPos.x += (Math.random() - 0.5) * s; camPos.y += (Math.random() - 0.5) * s; camPos.z += (Math.random() - 0.5) * s; }
     ascii.sceneCam.setPosition(camPos);
-    _look.set(camTarget.x + Math.sin(cam.yaw) * 3, camTarget.y, camTarget.z + Math.cos(cam.yaw) * 3);
+    if (toy) _look.copy(camTarget);
+    else _look.set(camTarget.x + Math.sin(cam.yaw) * 3, camTarget.y, camTarget.z + Math.cos(cam.yaw) * 3);
     ascii.sceneCam.lookAt(_look);
-    const az = cam.yaw + Math.PI + 0.3, el = 0.35;
+    const camYaw = toy ? yaw + Math.PI : cam.yaw;
+    const az = camYaw + Math.PI + 0.3, el = 0.35;
     v3.moonSky[0] = -Math.sin(az) * Math.cos(el); v3.moonSky[1] = Math.sin(el); v3.moonSky[2] = -Math.cos(az) * Math.cos(el);
+    cam.listenYaw = camYaw + Math.PI;
     const pondVisible = ascii.sceneCam.camera.frustum.containsSphere(world.water.sphere) > 0;
     ascii.updateReflection(camPos, _look, WORLD.waterY, pondVisible && q.refl > 0);
   }
@@ -379,6 +400,8 @@ export async function startGame(loader) {
   $('optStats').checked = showStats;
   $('optQuality').value = savedQ; $('optGlyph').value = glyph; $('optPalette').value = palette;
   $('optRenderer').value = store.get('renderer', 'auto');
+  $('optCamera').value = camMode;
+  $('optCamera').addEventListener('change', (e) => { camMode = e.target.value; store.set('camera', camMode); setOcc(); });
   let paused = false;
   const openSettings = (open) => { $('settings').hidden = !open; paused = open && !net.online; };
   $('btnSettings').addEventListener('click', () => openSettings(true));
@@ -462,7 +485,7 @@ export async function startGame(loader) {
     // blob shadows under the nearest cars
     for (let i = 0; i < NS; i++) {
       const c = list[i];
-      if (c) { const g = world.groundAt(c.body.p[0], c.body.p[2]); const h = c.body.p[1] - g; SHv[i].set([c.body.p[0], c.body.p[2], 2.1, clamp(0.6 - h * 0.08, 0, 0.6)]); } else SHv[i].fill(0);
+      if (c) { const g = world.groundAt(c.body.p[0], c.body.p[2]); const h = c.body.p[1] - g; SHv[i].set([c.body.p[0], c.body.p[2], 1.3, clamp(0.65 - h * 0.1, 0, 0.65)]); } else SHv[i].fill(0);
       SH[i].setValue(SHv[i]);
     }
     for (let i = 0; i < 3; i++) { const R = fx.rings[fx.rings.length - 1 - i]; if (R) ringV[i].set([R.x, R.z, R.r, R.a]); else ringV[i].fill(0); ringU[i].setValue(ringV[i]); }
@@ -484,7 +507,7 @@ export async function startGame(loader) {
     if (input.sightPressed) setAscii(!asciiOn);
     // the ASCII Glitch-Bomb: forced ASCII for a few seconds
     if (forcedAsciiT > 0) { forcedAsciiT -= dt; if (!ascii.ascii) { ascii.setOptions({ ascii: true }); resized(); } if (forcedAsciiT <= 0 && !asciiOn) { ascii.setOptions({ ascii: false }); resized(); } }
-    if (started && !paused && me) {
+    if (started && !paused && me && dt > 1e-5) {
       const inp = me.input;
       inp.throttle = input.throttle; inp.steer = input.steer; inp.boost = input.boost; inp.brake = input.brake;
       if (input.resetPressed) inp.reset = true;
@@ -524,7 +547,7 @@ export async function startGame(loader) {
     u.wet.setValue(me && me.body.p[1] < 0.6 ? Math.min(1, me.speed / 8) : 0);
     ascii.cellMat.setParameter('uTime', time);
     ascii.blitMat.setParameter('uGlow', new Float32Array([0.5, 0.5, 0.1, 0]));
-    sfx.setListener(camTarget.x, camTarget.z, cam.yaw + Math.PI);
+    sfx.setListener(camTarget.x, camTarget.z, cam.listenYaw ?? cam.yaw + Math.PI);
     if (toastTimer > 0) { toastTimer -= dt; shownFor += dt; if (toastQueue.length && shownFor > 1.8) { const [m, t] = toastQueue.shift(); showLine(m, t); } else if (toastTimer <= 0) $('toast').hidden = true; } else if (toastQueue.length) { const [m, t] = toastQueue.shift(); showLine(m, t); }
     $('board').hidden = !input.board;
     if (input.board) updateBoard();
@@ -582,6 +605,7 @@ export async function startGame(loader) {
       me.unwreck(LAYOUT.spawns[Math.floor(Math.random() * LAYOUT.spawns.length)]);
       camTarget.set(me.body.p[0], me.body.p[1], me.body.p[2]);
       { me.body.axis(2, _fw); cam.yaw = Math.atan2(_fw[0], _fw[2]); }
+      camTarget.set(me.body.p[0], me.body.p[1], me.body.p[2]);
       started = true;
       quality.cooldown = 3;
       syncBots();

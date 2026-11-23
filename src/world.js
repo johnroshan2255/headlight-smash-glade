@@ -346,7 +346,8 @@ export class World {
           if (Math.hypot(x - WORLD.shrine.x, z - WORLD.shrine.z) < 16) continue;
           const h = this.hf.at(x, z);
           if (h < WORLD.waterY + 0.4 || this.hf.normalY(x, z) < 0.75) continue;
-          pts.push([x, h - 0.05, z, 0.8 + rng() * 0.7 * (patch - 0.3) * 2, rng() * Math.PI * 2, 0.75 + rng() * 0.5, rng(), 0]);
+          pts.push([x, h - 0.05, z, (0.8 + rng() * 0.7 * (patch - 0.3) * 2) * 0.55, // toy-scale tufts: knee-high to a buggy
+             rng() * Math.PI * 2, 0.75 + rng() * 0.5, rng(), 0]);
         }
         if (!pts.length) continue;
         for (let i = pts.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pts[i], pts[j]] = [pts[j], pts[i]]; }

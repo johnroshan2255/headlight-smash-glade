@@ -174,6 +174,7 @@ export class Physics {
   remove(b) { const i = this.bodies.indexOf(b); if (i >= 0) this.bodies.splice(i, 1); }
 
   step(dt) {
+    if (!(dt > 1e-5)) return; // paused / duplicate frame: a zero step would divide by zero
     const sub = 3;
     const h = dt / sub;
     for (let s = 0; s < sub; s++) {
