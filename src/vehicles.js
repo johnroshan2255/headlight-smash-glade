@@ -129,7 +129,7 @@ export const VEHICLES = [
 // Toy scale: the meshes are modelled at "real buggy" size and the chassis entity is scaled down;
 // the physics (wheels, colliders, suspension) is scaled here to match. Lamps/seat/flame/front stay
 // in chassis-local (unscaled) units because they hang off the scaled chassis.
-export const SCALE = 0.58;
+export const SCALE = 0.8;
 for (const v of VEHICLES) {
   v.wheels = v.wheels.map(([x, z, f, r]) => [x * SCALE, z * SCALE, f, r * SCALE]);
   v.spheres = v.spheres.map(([x, y, z, r]) => [x * SCALE, y * SCALE, z * SCALE, r * SCALE]);

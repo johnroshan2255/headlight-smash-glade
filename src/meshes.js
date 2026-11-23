@@ -28,7 +28,24 @@ export class MeshBuilder {
 
   tri(a, b, c) { this.i.push(a, b, c); }
 
+  /** Bake another builder in: scale s, rotate ry about Y then rz about Z, then translate. */
+  append(src, { x = 0, y = 0, z = 0, s = 1, sx = s, sy = s, sz = s, ry = 0, rz = 0, sway } = {}) {
+    const base = this.count, cy = Math.cos(ry), sny = Math.sin(ry), cz = Math.cos(rz), snz = Math.sin(rz);
+    for (let i = 0; i < src.p.length; i += 3) {
+      let px = src.p[i] * sx, py = src.p[i + 1] * sy, pz = src.p[i + 2] * sz;
+      const qx = cy * px + sny * pz, qz = -sny * px + cy * pz;
+      px = cz * qx - snz * py; py = snz * qx + cz * py;
+      this.p.push(px + x, py + y, qz + z);
+      this.n.push(src.n[i], src.n[i + 1], src.n[i + 2]);
+      const c = i / 3 * 4;
+      this.c.push(src.c[c], src.c[c + 1], src.c[c + 2], sway === undefined ? src.c[c + 3] : sway);
+    }
+    for (const k of src.i) this.i.push(base + k);
+    return this;
+  }
+
   build(device) {
+    if (!device) return this; // no device: hand back the builder (for baking into bigger meshes)
     const mesh = new pc.Mesh(device);
     mesh.setPositions(this.p);
     mesh.setNormals(this.n);

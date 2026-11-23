@@ -1,85 +1,59 @@
-// HEADLIGHT: SMASH GLADE: map layout (single source of truth). x = east, z = south.
+// HEADLIGHT: SMASH GLADE, side view. One long glade, seen from the side, walled by fog at both
+// ends. Everything here is placed along x (metres); y is up. The play plane is z = 0.
 export const TITLE = 'HEADLIGHT: SMASH GLADE';
 
-const deg = (d) => (d * Math.PI) / 180;
-
 export const LAYOUT = {
-  waterY: 0,
-  pond: { x: 14, z: 4, r: 12 },
-  shrine: { x: -26, z: -40 }, // stunt bowl
-  playRadius: 66,
-  meadow: { x: -8, z: 20, r: 15 }, // central meadow: the cage-ball arena
-  cageBall: { x: -8, z: 20 },
-
-  // natural rock launch ramps: dir = heading the ramp launches you toward
+  halfW: 120, // fog walls at x = +-120
+  waterY: -0.6,
+  pond: { x0: -66, x1: -40, depth: 3.2 },
+  bowl: { x: 55, half: 15, depth: 6.5 }, // the shrine stunt bowl
+  // ramps: x = lip position, dir = +1 launches you rightwards, -1 leftwards
   ramps: [
-    { x: 2, z: 12, dir: deg(70), len: 9, width: 6, h: 2.6 }, // launches over the pond's west half
-    { x: 26, z: -6, dir: deg(-120), len: 9, width: 6, h: 2.6 }, // and back from the east shore
-    { x: -24, z: 18, dir: deg(90), len: 8, width: 5, h: 2.0 }, // meadow kicker
-    { x: 18, z: 34, dir: deg(-90), len: 10, width: 6, h: 3.2 }, // big south jump
-    { x: -2, z: -24, dir: deg(-30), len: 8, width: 5, h: 2.4 }, // forest gap
-    { x: 34, z: -30, dir: deg(150), len: 9, width: 6, h: 2.8 }, // north-east ridge
+    { x: -80, dir: 1, len: 7, h: 2.4 },
+    { x: -22, dir: -1, len: 6, h: 2.0 },
+    { x: 8, dir: 1, len: 6, h: 2.2 },
+    { x: 26, dir: -1, len: 7, h: 2.6 },
+    { x: 88, dir: 1, len: 6, h: 2.2 },
   ],
-
-  // dirt road loop through the glade (terrain colour + tree clearance)
-  path: [[-30, 44], [-8, 40], [8, 30], [30, 22], [40, 2], [32, -20], [12, -32], [-10, -30], [-26, -40], [-40, -22], [-44, 4], [-38, 30], [-30, 44]],
-
-  // explosive oil-lantern barrel clusters (each entry = a stack)
-  barrels: [
-    [-20, 41, 3], [5, 33, 2], [28, 24, 3], [41, 0, 2], [33, -19, 3], [10, -31, 2], [-12, -29, 3],
-    [-41, -20, 2], [-44, 6, 3], [-37, 30, 2], [0, 4, 2], [-26, -40, 4], // the last stack sits on the shrine altar
+  // rock-slide hills at both ends: boulders wait on a ledge; drive under them at your peril
+  slides: [
+    { x: -104, dir: 1, top: 9, count: 4 }, // ledge high on the left, rolls rightwards
+    { x: 104, dir: -1, top: 9, count: 4 },
   ],
-
-  // drive-through gadget crates
-  crates: [
-    [-8, 30], [6, 18], [-22, 6], [30, 12], [22, -16], [0, -14], [-18, -22], [-34, -10],
-    [-40, 18], [12, 42], [44, -12], [-26, -52],
-  ],
-
-  // gas vents in the pond (geysers)
-  geysers: [[10, 1], [16, 7], [18, -1], [12, 9], [21, 5]],
-
-  // unstable rock piles that slide when you hit them hard (dir = which way they tumble)
-  rockPiles: [
-    { x: 46, z: 20, dir: deg(180) },
-    { x: -48, z: -8, dir: deg(10) },
-    { x: 24, z: -40, dir: deg(110) },
-  ],
-
-  // the dead forest band that snaps when you boost into it
-  snapForest: { x0: -18, x1: 24, z0: -26, z1: -12, count: 26 },
-
-  // 12 hats: on ramp lips, behind snappable trees, over pond jumps, atop shrine pillars...
+  barrels: [[-90, 2], [-70, 1], [-36, 3], [-28, 1], [-12, 2], [14, 2], [33, 3], [46, 1], [55, 2], [64, 1], [80, 3], [95, 1]],
+  trees: [-96, -86, -33, -18, -8, 18, 38, 74, 79, 92], // dead trees you can snap into logs
+  crates: [-98, -74, -46, -26, -4, 12, 30, 50, 62, 84, 100],
+  geysers: [-60, -53, -46],
+  cageBall: 20,
+  pillars: [41, 69], // shrine pillars on the bowl rims
   hats: [
-    { id: 'bucket', x: 8, z: 4.5, y: 4.5 }, // mid-air over the pond: only reachable from the west ramp
-    { id: 'crown', x: -26, z: -48.5, y: 4.2 }, // on top of a shrine pillar (spring-hop)
-    { id: 'antlers', x: 4, z: -19, y: 1.2 }, // behind snappable trees
-    { id: 'cone', x: 18, z: 39, y: 4.8 }, // above the big south jump's lip
-    { id: 'witch', x: -48, z: -10, y: 3.2 }, // on the west rock pile
-    { id: 'tophat', x: 47, z: 21, y: 3.2 }, // on the east rock pile
-    { id: 'propeller', x: 26, z: -4, y: 3.6 }, // east ramp lip
-    { id: 'chef', x: -24, z: 21, y: 3.0 }, // meadow kicker
-    { id: 'pirate', x: -2, z: -27, y: 3.4 }, // forest gap jump
-    { id: 'viking', x: 34, z: -33, y: 3.8 }, // north-east ridge jump
-    { id: 'party', x: 14, z: -24, y: 1.2 }, // deep in the snappable forest
-    { id: 'halo', x: -8, z: 20, y: 6.0 }, // floating over the cage-ball
+    { id: 'bucket', x: -6, y: 6 }, // above the start
+    { id: 'crown', x: 69, y: 0, onPillar: true }, // top of the east shrine pillar
+    { id: 'antlers', x: -80, y: 9 }, // high over the west ramp: you have to fly
+    { id: 'cone', x: -112, y: 13 }, // above the left rock-slide ledge
+    { id: 'witch', x: 113, y: 13 }, // above the right one
+    { id: 'tophat', x: 55, y: -4 }, // bottom of the bowl, under the altar
+    { id: 'propeller', x: 26, y: 10 }, // above the east-facing ramp
+    { id: 'chef', x: -53, y: -2.4 }, // on the pond floor
+    { id: 'pirate', x: 41, y: 0, onPillar: true },
+    { id: 'viking', x: 8, y: 9 },
+    { id: 'party', x: 88, y: 8 },
+    { id: 'halo', x: 55, y: 9 }, // high over the bowl: launch from the rim
   ],
-
-  // drop-in points around the glade (cars fall out of the fog)
-  spawns: [[-30, 40], [0, 36], [32, 18], [38, -12], [8, -36], [-20, -30], [-44, -6], [-40, 24], [20, 26], [-14, 6]],
+  spawns: [-92, -76, -30, -14, 0, 16, 34, 76, 96, -2],
 };
 
-export const RESPAWN_SECONDS = 20; // barrels, trees, rocks, crates
+export const RESPAWN_SECONDS = 20;
 export const GADGET_SECONDS = 25;
 export const MAX_PLAYERS = 8;
 
 export const GADGETS = {
-  mine: { name: 'BOMB-DROPPER', hint: 'drop a mine behind you' },
-  rocket: { name: 'ROCKET-BOOST', hint: 'unlimited, uncontrollable boost' },
-  plow: { name: 'MEGA-PLOW', hint: 'ram anyone to launch them' },
-  horn: { name: 'SHOCKWAVE HORN', hint: 'honk to blast everyone away' },
-  hop: { name: 'SPRING-HOP', hint: 'tap to bunny-hop' },
-  glitch: { name: 'ASCII GLITCH-BOMB', hint: 'flip everyone near you into ASCII' },
+  mine: { name: 'Bomb-Dropper', hint: 'E drops a bomb behind you' },
+  rocket: { name: 'Rocket-Boost', hint: 'unlimited, uncontrollable boost' },
+  plow: { name: 'Mega-Plow', hint: 'ram cars to launch them' },
+  horn: { name: 'Shockwave Horn', hint: 'E blasts everything away' },
+  hop: { name: 'Spring-Hop', hint: 'E (or jump) for huge hops, even mid-air' },
+  glitch: { name: 'ASCII Glitch-Bomb', hint: 'E scrambles nearby drivers into ASCII' },
 };
 export const GADGET_KEYS = Object.keys(GADGETS);
 

@@ -41,8 +41,14 @@
   </div>
   <pre id="stats" hidden></pre>
 
+  <div id="tags" aria-hidden="true"></div>
+
   <!-- Touch -->
   <div id="stick" hidden><div id="stickKnob"></div></div>
+  <div id="pedals" class="touchOnly">
+    <button id="btnLeft" class="act pedal" aria-label="Drive left">&#9664;</button>
+    <button id="btnRight" class="act pedal" aria-label="Drive right">&#9654;</button>
+  </div>
   <div id="actions" hidden>
     <div class="row">
       <button id="btnHorn" class="act small" aria-label="Horn">HONK</button>
@@ -50,7 +56,7 @@
     </div>
     <button id="btnGadget" class="act" aria-label="Use gadget">GADGET</button>
     <div class="row">
-      <button id="btnBrake" class="act" aria-label="Handbrake">DRIFT</button>
+      <button id="btnHop" class="act" aria-label="Hop">HOP</button>
       <button id="btnBoost" class="act hot" aria-label="Boost">BOOST</button>
     </div>
   </div>
@@ -83,12 +89,6 @@
           <option value="mono">Monochrome</option>
         </select>
       </label>
-      <label>Camera
-        <select id="optCamera">
-          <option value="toy">Toy (top-down)</option>
-          <option value="chase">Chase</option>
-        </select>
-      </label>
       <label>Renderer <small>(reloads)</small>
         <select id="optRenderer">
           <option value="auto">Auto</option>
@@ -98,9 +98,9 @@
       </label>
       <label class="row"><input type="checkbox" id="optStats" /> Show performance stats</label>
       <p class="help">
-        Drive: WASD / arrows / left stick / RT·LT &nbsp; Boost: Shift / A &nbsp; Drift: Space / B<br />
-        Gadget: E / X &nbsp; Horn: H / Y &nbsp; Headlight flash: L / RB &nbsp; Flip: R / Start<br />
-        Scores: hold Tab / LB &nbsp; ASCII: V &nbsp; Camera: drag / Q C / right stick &nbsp; Zoom: wheel</p>
+        Drive: A D / arrows / d-pad (the other way = brake, then turn around) &nbsp; Boost: W / Shift / RT<br />
+        Hop: Space / A button &nbsp; Gadget: E / X &nbsp; Horn: H / Y &nbsp; Headlight flash: L / LB &nbsp; Flip: R / Start<br />
+        In the air, left/right spins you &nbsp; Scores: hold Tab &nbsp; ASCII: V &nbsp; Zoom: wheel</p>
       <button id="btnClose">Back to the glade</button>
       <button id="btnLeave" class="danger">Leave to menu</button>
     </div>
