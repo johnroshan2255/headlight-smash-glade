@@ -32,7 +32,7 @@ export class Input {
         if (e.code === 'Space' || e.code === 'KeyK') this._q.hop = true;
         if (e.code === 'KeyH') this._q.horn = true;
         if (e.code === 'KeyR') this._q.reset = true;
-        if (e.code === 'KeyV') this._q.sight = true;
+        // if (e.code === 'KeyV') this._q.sight = true; // ASCII view off
       }
       this.keys.add(e.code);
       this.anyInput = true;
@@ -140,7 +140,7 @@ export class Input {
         if (edge(2)) this._q.gadget = true;
         if (edge(3)) this._q.horn = true;
         if (edge(9) || edge(1)) this._q.reset = true;
-        if (edge(8)) this._q.sight = true;
+        // if (edge(8)) this._q.sight = true; // ASCII view off
         if (b(4)) flash = true;
         if (b(6)) board = true;
         for (const i of [0, 1, 2, 3, 8, 9]) this._padPrev[i] = b(i);

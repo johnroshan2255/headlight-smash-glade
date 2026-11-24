@@ -35,6 +35,7 @@ export class Body {
     this.onContact = null; // (otherBody | null, impactSpeed)
     this.ws = shapes.map(() => [0, 0]);
     this.noBodyCollide = false;
+    this.tuck = 0;
   }
 
   set(x, y, a = this.a) { this.p[0] = x; this.p[1] = y; this.a = a; this.updateShapes(); return this; }
@@ -123,18 +124,25 @@ export class Physics {
       for (const b of bodies) if (b.enabled && !b.kinematic) this.collideWorld(b);
       this.collideBodies();
     }
+    // props at rest stay at rest: bleed off the solver's leftover jitter (also keeps the host
+    // from re-broadcasting barrels that are only trembling)
+    for (const b of bodies) {
+      if (!b.enabled || b.kinematic || b.car || !b.grounded) continue;
+      if (Math.abs(b.v[0]) + Math.abs(b.v[1]) < 0.35 && Math.abs(b.w) < 0.5) { b.v[0] *= 0.5; b.v[1] *= 0.5; b.w *= 0.5; }
+    }
   }
 
   collideWorld(b) {
     b.grounded = Math.max(0, b.grounded - 1);
     for (let i = 0; i < b.shapes.length; i++) {
       const c = b.ws[i], r = b.shapes[i][2];
-      // terrain
+      // terrain (cars tuck their colliders in a little: the wheels carry them, not the belly)
+      const rt = r - b.tuck;
       const g = this.terrain.height(c[0]);
-      if (c[1] - r < g + 0.5) {
+      if (c[1] - rt < g + 0.5) {
         const n = this.terrain.normal(c[0], _va);
-        const pen = r - (c[1] - g) * n[1];
-        if (pen > 0) { this.resolve(b, null, c[0] - n[0] * r, c[1] - n[1] * r, n[0], n[1], pen); b.grounded = 3; }
+        const pen = rt - (c[1] - g) * n[1];
+        if (pen > 0) { this.resolve(b, null, c[0] - n[0] * rt, c[1] - n[1] * rt, n[0], n[1], pen); b.grounded = 3; }
       }
       // static circles
       const list = this.statics.query(c[0]);
@@ -204,6 +212,8 @@ export class Physics {
     const jx = nx * j + tx * jt, jy = ny * j + ty * jt;
     if (aDyn) a.applyImpulse(jx, jy, rax, ray);
     if (bDyn) b.applyImpulse(-jx, -jy, rbx, rby);
+    // resting on top of another body counts as standing on something (so a buggy can hop off a log)
+    if (b) { if (ny > 0.5) a.grounded = 3; else if (ny < -0.5) b.grounded = 3; }
     const speed = -vn;
     if (speed > a.lastImpact) { a.lastImpact = speed; a.lastHitBy = b; }
     if (b && speed > b.lastImpact) { b.lastImpact = speed; b.lastHitBy = a; }

@@ -24,7 +24,8 @@
       <div id="hats">HATS 0/12</div>
     </div>
     <div class="hud-right">
-      <button id="btnAscii" class="hud-btn wide" aria-pressed="false" title="ASCII view (V)">[ ] ASCII</button>
+      <!-- ASCII view switched off for the side view (re-enable together with the code marked "ASCII view off" in src/game.js)
+      <button id="btnAscii" class="hud-btn wide" aria-pressed="false" title="ASCII view (V)">[ ] ASCII</button> -->
       <button id="btnFull" class="hud-btn" aria-label="Fullscreen" hidden>⤢</button>
       <button id="btnSettings" class="hud-btn" aria-label="Settings">≡</button>
     </div>
@@ -75,6 +76,7 @@
           <option value="4">Ultra</option>
         </select>
       </label>
+      <!-- ASCII view off
       <label>Glyph size
         <select id="optGlyph">
           <option value="xs">Tiny</option>
@@ -82,7 +84,7 @@
           <option value="m">Medium</option>
           <option value="l">Large</option>
         </select>
-      </label>
+      </label> -->
       <label>Colour
         <select id="optPalette">
           <option value="color">Muted colour</option>
@@ -100,7 +102,7 @@
       <p class="help">
         Drive: A D / arrows / d-pad (the other way = brake, then turn around) &nbsp; Boost: W / Shift / RT<br />
         Hop: Space / A button &nbsp; Gadget: E / X &nbsp; Horn: H / Y &nbsp; Headlight flash: L / LB &nbsp; Flip: R / Start<br />
-        In the air, left/right spins you &nbsp; Scores: hold Tab &nbsp; ASCII: V &nbsp; Zoom: wheel</p>
+        In the air, left/right spins you &nbsp; Scores: hold Tab &nbsp; Zoom: wheel<!-- &nbsp; ASCII: V --></p>
       <button id="btnClose">Back to the glade</button>
       <button id="btnLeave" class="danger">Leave to menu</button>
     </div>

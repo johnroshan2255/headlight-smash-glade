@@ -35,7 +35,7 @@ const SKY_GLSL = `
 uniform vec2 uRes;
 uniform float uMono;
 vec3 sky(vec2 uv) {
-  float t = length((uv - vec2(0.5, 0.6)) / vec2(0.9, 0.72));
+  float t = length((uv - vec2(0.5, 0.5)) / vec2(0.95, 0.74));
   vec3 c0 = vec3(0.40, 0.45, 0.435), c1 = vec3(0.247, 0.29, 0.278), c2 = vec3(0.102, 0.122, 0.114), c3 = vec3(0.039, 0.047, 0.043);
   vec3 c = t < 0.38 ? mix(c0, c1, t / 0.38) : t < 0.78 ? mix(c1, c2, (t - 0.38) / 0.4) : mix(c2, c3, clamp((t - 0.78) / 0.22, 0.0, 1.0));
   float l = dot(c, vec3(0.3, 0.59, 0.11));
@@ -45,7 +45,7 @@ const SKY_WGSL = `
 uniform uRes: vec2f;
 uniform uMono: f32;
 fn sky(uv: vec2f) -> vec3f {
-  let t = length((uv - vec2f(0.5, 0.6)) / vec2f(0.9, 0.72));
+  let t = length((uv - vec2f(0.5, 0.5)) / vec2f(0.95, 0.74));
   let c0 = vec3f(0.40, 0.45, 0.435);
   let c1 = vec3f(0.247, 0.29, 0.278);
   let c2 = vec3f(0.102, 0.122, 0.114);
@@ -67,9 +67,9 @@ vec3 beamLight(vec4 H, vec3 w) {
   vec2 d = w.xy - H.xy;
   float l = length(d) + 0.001;
   float c = dot(d / l, vec2(cos(H.z), sin(H.z)));
-  float cone = smoothstep(0.955, 0.985, c);
-  float att = clamp(1.0 - l / 17.0, 0.0, 1.0);
-  return vec3(1.0, 0.78, 0.5) * cone * att * att * H.w;
+  float cone = smoothstep(0.972, 0.996, c);
+  float att = clamp(1.0 - l / 15.0, 0.0, 1.0);
+  return vec3(0.6, 0.47, 0.3) * cone * att * att * H.w;
 }
 vec3 flashLight(vec4 F, vec3 w) {
   vec2 d = w.xy - F.xy;
@@ -90,9 +90,9 @@ fn beamLight(H: vec4f, w: vec3f) -> vec3f {
   let d = w.xy - H.xy;
   let l = length(d) + 0.001;
   let c = dot(d / l, vec2f(cos(H.z), sin(H.z)));
-  let cone = smoothstep(0.955, 0.985, c);
-  let att = clamp(1.0 - l / 17.0, 0.0, 1.0);
-  return vec3f(1.0, 0.78, 0.5) * cone * att * att * H.w;
+  let cone = smoothstep(0.972, 0.996, c);
+  let att = clamp(1.0 - l / 15.0, 0.0, 1.0);
+  return vec3f(0.6, 0.47, 0.3) * cone * att * att * H.w;
 }
 fn flashLight(F: vec4f, w: vec3f) -> vec3f {
   let d = w.xy - F.xy;

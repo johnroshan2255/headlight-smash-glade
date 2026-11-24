@@ -1,12 +1,13 @@
 # HEADLIGHT: SMASH GLADE
 
-Drop-in/drop-out multiplayer demolition for up to **8 tiny headlight buggies** in a foggy,
-monochrome forest where only the explosions are amber. There are no timers, no rounds and no
+Drop-in/drop-out multiplayer demolition for up to **8 tiny headlight buggies**, seen from the side
+in one long, foggy glade. Everything is a black silhouette against layered grey-teal mist. The only
+colour comes from headlight beams and amber explosions. There are no timers, no rounds and no
 monsters. You smash things, get smashed, and respawn two seconds later after your hat pops off
 like a cork.
 
-Built on **PlayCanvas** (WebGL 2 + WebGPU) with an optional ASCII view. Multiplayer runs on
-**Colyseus** (MIT, self-hosted). Every sound is synthesised at runtime, so there are no audio files.
+Built on **PlayCanvas** (WebGL 2 + WebGPU). Multiplayer runs on **Colyseus** (MIT, self-hosted).
+Every sound is synthesised at runtime, so there are no audio files.
 
 ```bash
 npm install
@@ -20,20 +21,22 @@ Anyone on your Wi-Fi can join `http://<your-ip>:2567`. Players who type the same
 share a glade. Empty seats are filled by bots, which run on the room's host browser.
 
 ## The glade
-- **Oil barrels** blow up when hit hard and set off chain reactions. Props respawn every 20 s.
-- **Dead trees** snap when rammed and become rolling logs.
-- **Boulder ramps** and **rock-slide traps**.
-- **Pond geysers** launch anything parked on top of them.
-- **The cage-ball** explodes after 5 hits.
-- **The shrine** is a stunt bowl.
-- **Gadget crates** give one of six gadgets for 25 s:
+One lane, 240 m long, walled by fog at both ends. From west to east:
+- **A rock-slide hill.** Boulders wait on a ledge and roll down when you drive in below them.
+- **Ramps.** Five of them, each with a drivable back slope.
+- **The pond.** Buggies float and paddle across. Three **geysers** launch anything sitting over them.
+- **Oil barrels.** They blow up when rammed hard, and set off chain reactions. Props respawn every 20 s.
+- **Dead trees.** They snap when rammed (or creak over if you keep pushing) and become rolling logs.
+- **The cage-ball.** It explodes after 5 hits.
+- **The shrine bowl.** A steep half-pipe between two shrine pillars.
+- **Gadget crates.** Each gives one of five gadgets for 25 s:
   - **Bomb-Dropper**: lays mines behind you.
   - **Rocket-Boost**: unlimited boost.
   - **Mega-Plow**: launches anyone it hits.
   - **Shockwave Horn**: blasts nearby cars and props away.
-  - **Spring-Hop**: jumps.
-  - **ASCII Glitch-Bomb**: forces nearby rivals into ASCII view for 10 s.
-- **12 secret hats** are hidden around the map. Each one is saved once found and can be picked in the garage.
+  - **Spring-Hop**: huge hops, even mid-air.
+- **12 secret hats.** Each one is a small stunt: a boosted ramp jump, a pillar top, the pond floor,
+  a geyser ride. Found hats are saved and can be picked in the garage.
 
 ## 8 vehicles
 | Vehicle | Character |
@@ -43,20 +46,20 @@ share a glade. Empty seats are filled by bots, which run on the room's host brow
 | Old Tractor | Torque, giant rear wheels |
 | Monster Hopper | Soft springs, big air |
 | Lantern Hearse | Long, heavy battering ram |
-| Bone Trike | 3 wheels, twitchy |
-| Coffin Kart | Low, grippy, drift king |
+| Bone Trike | Three wheels, twitchy |
+| Coffin Kart | Low and grippy |
 | Shrine Dozer | Slow, and its stone blade launches cars |
 
 ## Controls
 - **Keyboard:**
-  - Drive with WASD or the arrow keys. Shift boosts and Space drifts.
-  - E uses your gadget and H honks. Hold L to flash your headlights.
-  - R flips the car upright. Hold Tab for the scores. V toggles the ASCII view.
-- **Touch:** left stick to drive, plus BOOST, DRIFT, GADGET, HONK and FLIP buttons.
-- **Gamepad:**
-  - RT/LT to drive and the left stick to steer.
-  - A boosts and B drifts. X uses your gadget and Y honks.
-  - RB flashes your headlights and Start flips the car.
+  - A/D or the arrow keys drive. Pressing the other way brakes, then turns the buggy around.
+  - W or Shift boosts. Space hops.
+  - In the air the buggy steadies itself for the landing. Press against the way you face to backflip.
+  - E uses your gadget, H honks and L flashes your headlights. R flips the car upright.
+  - Hold Tab for the scores. The mouse wheel zooms.
+- **Touch:** ◀ ▶ pedals, plus BOOST, HOP, GADGET, HONK and FLIP buttons.
+- **Gamepad:** left stick or d-pad to drive, RT/RB to boost, A to hop, X for the gadget, Y to honk,
+  LB to flash your headlights, B/Start to flip.
 
 ## Netcode
 - Each client simulates its own car and sends 20 Hz snapshots. Other cars are shown with 110 ms
@@ -67,4 +70,19 @@ share a glade. Empty seats are filled by bots, which run on the room's host brow
   everyone.
 - If the host leaves, the next-oldest player takes over and the bots move with them.
 
-URL flags: `?gpu=webgl2|webgpu`, `?stats`, `?server=wss://…`, `?room=CODE`, `?autostart&mode=solo&veh=kart`.
+URL flags: `?gpu=webgl2|webgpu`, `?stats`, `?server=wss://…`, `?room=CODE`,
+`?autostart&mode=solo&veh=kart`, `?bots=0..7`.
+
+## Playtests
+Headless checks driven through the system Chrome (`playwright-core`). Start `npm run play` first.
+Screenshots go to `$HSG_SHOTS` (default: a `hsg-shots` folder in the system temp directory).
+
+| Script | Checks |
+|---|---|
+| `node scripts/playtest/vehicles.mjs` | all 8 vehicles: ride height, ramp jump, boosted jump, turn-around, hop, bowl exit, pond crossing, hill climb |
+| `node scripts/playtest/hats.mjs <vehicle>` | every hat can be collected with its stunt |
+| `node scripts/playtest/mp.mjs` | 2 players: roster, host, bots, car and prop sync, guest barrel hit, host hand-over (`NOBOTS=1` for a deterministic run) |
+| `node scripts/playtest/soak.mjs 60 <vehicle> drive` | bots for a minute: fps, wrecks, scores, stuck bots, errors |
+| `node scripts/playtest/phone.mjs` | portrait + landscape phone layout, touch driving, overlapping buttons |
+| `node scripts/playtest/shot.mjs <name> [query]` | a screenshot plus state |
+| `trace.mjs`, `jumps.mjs`, `stuck.mjs` | debugging timelines: suspension, jump apexes, stuck bots |

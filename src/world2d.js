@@ -2,7 +2,7 @@
 // (foreground trunks, the play plane, four fog-washed forest layers behind), drifting fog banks,
 // the pond and the sky. Static scenery is baked into a few big meshes per 60 m chunk.
 import * as pc from 'playcanvas';
-import { LAYOUT } from './layout.js';
+import { LAYOUT, rampBack } from './layout.js';
 import { CLS } from './shaders.js';
 import { MeshBuilder, rgba, deadTreeMesh, pineMesh, rockMesh, grassTuftMesh, quadMesh, addBox, addLathe } from './meshes.js';
 import { silMaterial, skyMaterial, fogMaterial, tintMaterial, glowMaterial } from './sil.js';
@@ -29,12 +29,15 @@ export class Terrain {
     y = y + (-L.pond.depth - y) * (1 - smooth(0.62, 1.05, pt));
     // the shrine stunt bowl (a steep half-pipe)
     const u = (x - L.bowl.x) / L.bowl.half;
-    if (Math.abs(u) < 1) { const k = Math.abs(u) ** 3; y = -L.bowl.depth * (1 - k) + y * k; }
-    // ramps: a concave run-up to a lip, then a short drop
+    if (Math.abs(u) < 1) { const k = Math.abs(u) ** 2.4; y = -L.bowl.depth * (1 - k) + y * k; }
+    // ramps: a concave run-up to a lip, then a rounded back slope. There is only one lane, so the
+    // back has to be drivable too: fast buggies fly off the lip, slow ones roll over the crest,
+    // and anyone coming the other way can climb it.
     for (const r of L.ramps) {
       const s = (x - r.x) * r.dir; // < 0 on the run-up side
+      const back = rampBack(r);
       if (s > -r.len && s <= 0) y += r.h * ((s + r.len) / r.len) ** 1.6;
-      else if (s > 0 && s < 1.4) y += r.h * (1 - s / 1.4) ** 2;
+      else if (s > 0 && s < back) y += r.h * 0.5 * (1 + Math.cos((Math.PI * s) / back));
     }
     // rock-slide hills climbing into the fog walls, with a shelf for the boulders
     for (const sl of L.slides) {
@@ -59,12 +62,15 @@ export class Terrain {
   normal(x, out) { const s = this.slope(x), l = Math.hypot(s, 1); out[0] = -s / l; out[1] = 1 / l; return out; }
 }
 
-// background forest layers: z, tree spacing, scale, ground lift
+// background forest layers: z, tree spacing, scale, ground lift, how closely the hill follows the
+// play terrain. The camera looks slightly down at the cars, so far ground appears higher on screen:
+// the near hills sit below the play plane's ground line, which leaves the buggies standing against
+// the bright far fog (as on the title screen) instead of against a dark hill.
 const LAYERS = [
-  { z: -6, gap: 9, s: [1.0, 1.5], lift: 0.2, seed: 11, pine: 0.1 },
-  { z: -15, gap: 6.5, s: [1.1, 1.7], lift: 1.2, seed: 23, pine: 0.25 },
-  { z: -30, gap: 5, s: [1.3, 2.0], lift: 3.0, seed: 37, pine: 0.35 },
-  { z: -55, gap: 4, s: [1.6, 2.4], lift: 6.0, seed: 51, pine: 0.45 },
+  { z: -6, gap: 9, s: [1.0, 1.5], lift: -1.7, follow: 0.85, seed: 11, pine: 0.1 },
+  { z: -15, gap: 6.5, s: [1.1, 1.7], lift: -3.0, follow: 0.7, seed: 23, pine: 0.25 },
+  { z: -30, gap: 5, s: [1.3, 2.0], lift: -3.2, follow: 0.45, seed: 37, pine: 0.35 },
+  { z: -55, gap: 4, s: [1.6, 2.4], lift: -3.5, follow: 0.25, seed: 51, pine: 0.45 },
 ];
 
 export class World2D {
@@ -144,7 +150,8 @@ export class World2D {
     for (const L of LAYERS) {
       const rng = mulberry32(L.seed);
       const ph = rng() * 10, f1 = 0.02 + rng() * 0.02, f2 = 0.07 + rng() * 0.04;
-      L.fn = (x) => T.height(x) * 0.25 + L.lift + Math.sin(x * f1 + ph) * (1 + L.lift * 0.4) + Math.sin(x * f2 + ph * 2) * 0.6;
+      const amp = 0.5 + -L.z * 0.03;
+      L.fn = (x) => T.height(x) * L.follow + L.lift + Math.sin(x * f1 + ph) * amp + Math.sin(x * f2 + ph * 2) * 0.4;
       for (let cx = -SPAN; cx < SPAN; cx += 60) {
         const mb = new MeshBuilder();
         this.groundStrip(mb, L.fn, L.z, cx, cx + 60, 1.0);
@@ -194,15 +201,11 @@ export class World2D {
       mb.append(dead[Math.floor(fr() * dead.length)], { x, y: T.height(x) - 3, z, s: 2.2 + fr() * 0.8, ry: fr() * 6.28 });
       this.addEntity('foreground', mb.build(this.device), this.mats.scenery);
     }
-    // foreground floor so the bottom of the screen is solid black, like the title screen
-    const mb = new MeshBuilder();
-    this.groundStrip(mb, (x) => T.height(x) - 2.2 + Math.sin(x * 0.07) * 0.6, 7, -SPAN, SPAN, 1.0);
-    this.addEntity('foreFloor', mb.build(this.device), this.mats.ground);
   }
 
   buildFog() {
     // banks of fog between the layers; their colour is the sky behind them, so they read as mist
-    const sheets = [{ z: -3, d: 0.35, y0: -6, y1: 4 }, { z: -10, d: 0.5, y0: -6, y1: 7 }, { z: -22, d: 0.6, y0: -4, y1: 10 }, { z: -42, d: 0.7, y0: -2, y1: 14 }, { z: 3.5, d: 0.25, y0: -6, y1: 1.5 }];
+    const sheets = [{ z: -3, d: 0.5, y0: -8, y1: 5 }, { z: -10, d: 0.5, y0: -6, y1: 7 }, { z: -22, d: 0.6, y0: -4, y1: 10 }, { z: -42, d: 0.7, y0: -2, y1: 14 }, { z: 3.5, d: 0.25, y0: -6, y1: 1.5 }];
     for (const S of sheets) {
       const mb = new MeshBuilder();
       const lo = rgba(1, 1, 1, 0), mid = rgba(1, 1, 1, 0);

@@ -70,7 +70,7 @@ function altarMesh(device) {
 }
 function haloSprite(device) {
   const mesh = new pc.Mesh(device);
-  const pos = [0, 0, 0], col = [255, 235, 200, 90], idx = [];
+  const pos = [0, 0, 0], col = [255, 226, 180, 46], idx = [];
   for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI * 2; pos.push(Math.cos(a), Math.sin(a), 0); col.push(255, 220, 170, 0); if (i > 0) idx.push(0, i, i + 1); }
   mesh.setPositions(pos); mesh.setColors32(col); mesh.setIndices(idx); mesh.update(pc.PRIMITIVE_TRIANGLES);
   mesh.incRefCount();
@@ -198,11 +198,11 @@ export class Sandbox {
 
   buildShrine() {
     this.pillars = LAYOUT.pillars.map((x) => {
-      const g = this.terrain.height(x), h = 5.5;
+      // the pillars stand just behind the lane: a hat waits on top of each for whoever flies off the rim
+      const g = this.terrain.height(x), h = 3.6 - g; // both tops level, whatever the ground does
       const e = this.ent(pillarMesh(this.app.graphicsDevice, h), this.mat, 'pillar');
-      e.setPosition(x, g - 0.3, -0.4);
-      for (let y = 0.8; y <= h; y += 1.1) this.physics.statics.add({ x, y: g - 0.3 + y, r: 0.85, kind: 'pillar', drive: true });
-      return { x, top: g - 0.3 + h + 0.6 };
+      e.setPosition(x, g - 0.8, -2.6);
+      return { x, top: g - 0.8 + h + 0.6 };
     });
     const ax = LAYOUT.bowl.x, ag = this.terrain.height(ax);
     this.ent(this.meshes.altar, this.mat, 'altar').setPosition(ax, ag - 0.1, -1.6);
@@ -223,11 +223,11 @@ export class Sandbox {
     this.ownedHats = new Set(owned);
     this.hats = LAYOUT.hats.map((h) => {
       let y = this.terrain.height(h.x) + h.y;
-      if (h.onPillar) { const p = this.pillars.find((q) => Math.abs(q.x - h.x) < 1); if (p) y = p.top + 0.9; }
+      if (h.onPillar) { const p = this.pillars.find((q) => Math.abs(q.x - h.x) < 1); if (p) y = p.top + 0.7; }
       const e = this.ent(hatMesh(this.app.graphicsDevice, h.id), this.mat, 'hatPickup');
       e.setLocalScale(1.5, 1.5, 1.5);
       const halo = this.ent(this.meshes.halo, this.glow, 'hatHalo', 0.5);
-      halo.setLocalScale(1.2, 1.2, 1);
+      halo.setLocalScale(0.8, 0.8, 1);
       const got = this.ownedHats.has(h.id);
       e.enabled = halo.enabled = !got;
       return { id: h.id, x: h.x, y, ent: e, halo, got };
@@ -241,8 +241,11 @@ export class Sandbox {
       if (P.kind === 'barrel' && sp > 11 && this.isHost && P.alive) this.light(P, null);
       return;
     }
+    // props are round: a buggy ramming one rides up over it, so the head-on part of the impact
+    // understates the hit. Count a solid ram by the buggy's own speed too.
+    if (sp > 2.5) sp = Math.max(sp, car.speed * 0.8);
     if (this.isHost) {
-      if (P.kind === 'barrel' && sp > 8 && P.alive) this.light(P, car.id);
+      if (P.kind === 'barrel' && sp > 7 && P.alive) this.light(P, car.id);
       if (P.kind === 'ball' && sp > 4.5 && this.time - P.lastHit > 0.3) this.ballHit(car.id);
       if (P.kind === 'boulder' && P.held) this.releaseSlide(this.slides[P.slide]);
     } else if (car.local) {
@@ -265,7 +268,7 @@ export class Sandbox {
       P.body.v[0] += msg.v[0] * k; P.body.v[1] += Math.abs(msg.v[0]) * k * 0.25 + Math.max(0, msg.v[1]) * k;
       P.body.w += (Math.random() - 0.5) * 3;
     }
-    if (P.kind === 'barrel' && msg.sp > 8) this.light(P, by);
+    if (P.kind === 'barrel' && msg.sp > 7) this.light(P, by);
     if (P.kind === 'ball' && msg.sp > 4.5 && this.time - P.lastHit > 0.3) this.ballHit(by);
     if (P.kind === 'boulder' && P.held) this.releaseSlide(this.slides[P.slide]);
   }
@@ -273,8 +276,17 @@ export class Sandbox {
   treeHit(T, b) {
     if (T.snapped) return true;
     const car = b.car;
-    if (!car || Math.abs(b.v[0]) < 7) return false; // a slow bump: the tree holds
-    const dir = Math.sign(b.v[0]);
+    if (!car) return false;
+    if (Math.abs(b.v[0]) < 5.5) {
+      // a slow bump: the tree holds, but keep leaning on it and it creaks over (there is only
+      // one lane, so a tree must never be a dead end)
+      if (this.time - (T.leanAt || 0) > 0.25) T.lean = 0;
+      T.lean = (T.lean || 0) + Math.min(0.05, this.time - (T.leanAt || this.time));
+      T.leanAt = this.time;
+      if (T.lean < 0.7 || Math.abs(car.throttle) < 0.3) return false;
+    }
+    T.lean = 0;
+    const dir = Math.sign(b.v[0]) || car.facing;
     if (this.isHost) this.snapTree(T, dir, car.id);
     else if (car.local) { this.net.send('snap', { i: T.i, dir }); this.hideTree(T); }
     b.v[0] *= 0.7;
@@ -299,11 +311,11 @@ export class Sandbox {
     // the trunk becomes a log that topples the way it was hit
     const shapes = [];
     for (let x = -2.1; x <= 2.11; x += 0.7) shapes.push([x, 0, 0.34]);
-    const body = new Body({ mass: 90, shapes, inertia: 90 * 1.6, restitution: 0.1, friction: 0.8, kind: 'log', linDamp: 0.05, angDamp: 0.15 });
+    const body = new Body({ mass: 80, shapes, inertia: 80 * 1.6, restitution: 0.1, friction: 0.5, kind: 'log', linDamp: 0.05, angDamp: 0.15 });
     body.set(T.x + dir * 0.3, T.g + 2.6, Math.PI / 2);
     body.w = -dir * 1.6;
     body.v[0] = dir * 2;
-    const L = this.addProp({ kind: 'log', body, alive: true, tree: T, by, ent: this.ent(this.meshes.log, this.mat, 'log') });
+    const L = this.addProp({ kind: 'log', body, alive: true, tree: T, by, life: 12, ent: this.ent(this.meshes.log, this.mat, 'log') });
     T.log = L;
     this.logs.push(L);
   }
@@ -434,6 +446,12 @@ export class Sandbox {
         if (host) this.net.send('regrow', { i: T.i });
       }
     }
+    // a fallen log only blocks the lane for a while, then it rots away (the tree regrows later)
+    if (host) for (let i = this.logs.length - 1; i >= 0; i--) {
+      const L = this.logs[i];
+      L.life -= dt;
+      if (L.life <= 0) { if (L.tree && L.tree.log === L) L.tree.log = null; this.removeProp(L); this.logs.splice(i, 1); }
+    }
     // rock slides reset
     for (const sl of this.slides) {
       if (!sl.released || !host) continue;
@@ -470,7 +488,7 @@ export class Sandbox {
     // visuals
     for (const P of this.dyn) if (P) this.syncProp(P);
     const t = this.time;
-    for (const C of this.crates) { C.ent.enabled = C.halo.enabled = C.alive; if (C.alive) { const y = C.y + Math.sin(t * 2 + C.i) * 0.15; C.ent.setPosition(C.x, y, 0); C.ent.setEulerAngles(0, t * 40 + C.i * 30, 0); C.halo.setPosition(C.x, y, 0.6); const s = 1.4 + Math.sin(t * 3 + C.i) * 0.15; C.halo.setLocalScale(s, s, 1); } }
+    for (const C of this.crates) { C.ent.enabled = C.halo.enabled = C.alive; if (C.alive) { const y = C.y + Math.sin(t * 2 + C.i) * 0.15; C.ent.setPosition(C.x, y, 0); C.ent.setEulerAngles(0, t * 40 + C.i * 30, 0); C.halo.setPosition(C.x, y, 0.6); const s = 1.0 + Math.sin(t * 3 + C.i) * 0.1; C.halo.setLocalScale(s, s, 1); } }
     for (const H of this.hats) if (!H.got) { const y = H.y + Math.sin(t * 1.7 + H.x) * 0.2; H.ent.setPosition(H.x, y, 0); H.ent.setEulerAngles(0, t * 70, 0); H.halo.setPosition(H.x, y + 0.2, 0.5); }
     // network: host broadcasts what moved
     if (host && this.net.online) {
@@ -567,7 +585,7 @@ export class Sandbox {
       if (msg.full && P.ent === null) continue;
       const was = P.alive !== false;
       P.alive = !!alive;
-      if (P.kind === 'mine' && was && !alive) this.removeProp(P);
+      if ((P.kind === 'mine' || P.kind === 'log') && was && !alive) { if (P.tree && P.tree.log === P) P.tree.log = null; this.removeProp(P); }
       if (P.kind === 'barrel' || P.kind === 'ball') P.body.enabled = !!alive;
       if (!was && alive) { P.body.set(x, y, a); }
     }

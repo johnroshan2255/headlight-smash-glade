@@ -4,7 +4,7 @@
 import * as pc from 'playcanvas';
 import { CLS } from './shaders.js';
 import { MeshBuilder, rgba, addTube, addLathe, addSphere, addBox } from './meshes.js';
-import { Body } from './physics2d.js';
+import { Body, G } from './physics2d.js';
 import { hatMesh } from './hats.js';
 import { vehicleSpec, chassisFor, SCALE } from './vehicles.js';
 import { silMaterial, glowMaterial } from './sil.js';
@@ -44,28 +44,23 @@ function gadgetMeshes(device) {
   return { plow: plow.build(device), flame: flame.build(device), horn: horn.build(device), mine: keg.build(device), hop: spring.build(device), glitch: dish.build(device) };
 }
 
-/** The headlight beam: a soft additive fan, brightest along its axis. Points along +x. */
+/** The headlight beam: a thin, soft additive wedge like the one on the title screen. It fades
+ *  along its length and towards both edges. Points along +x. */
 function beamMesh(device) {
   const mesh = new pc.Mesh(device);
-  const L = 16, spread = 0.24, segs = 12;
-  const pos = [0, 0, 0], col = [255, 222, 170, 150];
-  const idx = [];
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs * 2 - 1; // -1..1 across the beam
-    const ang = t * spread - 0.06;
-    pos.push(Math.cos(ang) * L, Math.sin(ang) * L, 0);
-    const edge = 1 - Math.abs(t);
-    col.push(255, 214, 160, Math.round(255 * 0.11 * edge * edge));
-    if (i > 0) idx.push(0, i, i + 1);
+  const L = 14, spread = 0.15, segs = 10, rings = 6, tilt = -0.06;
+  const pos = [], col = [], idx = [];
+  for (let j = 0; j <= rings; j++) {
+    const r = (j / rings) ** 1.3 * L, along = 1 - j / rings;
+    for (let i = 0; i <= segs; i++) {
+      const t = (i / segs) * 2 - 1, ang = t * spread + tilt; // -1..1 across the beam
+      pos.push(Math.cos(ang) * r, Math.sin(ang) * r, 0);
+      col.push(255, 214, 160, Math.round(255 * 0.42 * along ** 1.4 * (1 - Math.abs(t)) ** 1.5));
+    }
   }
-  // a hot inner core
-  const c0 = pos.length / 3;
-  pos.push(0, 0, 0.01); col.push(255, 230, 190, 120);
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6 * 2 - 1, ang = t * spread * 0.4 - 0.05;
-    pos.push(Math.cos(ang) * L * 0.55, Math.sin(ang) * L * 0.55, 0.01);
-    col.push(255, 225, 180, Math.round(255 * 0.08 * (1 - Math.abs(t))));
-    if (i > 0) idx.push(c0, c0 + i, c0 + i + 1);
+  for (let j = 0; j < rings; j++) for (let i = 0; i < segs; i++) {
+    const a = j * (segs + 1) + i, b = a + segs + 1;
+    idx.push(a, b, b + 1, a, b + 1, a + 1);
   }
   mesh.setPositions(pos);
   mesh.setColors32(col);
@@ -76,7 +71,7 @@ function beamMesh(device) {
 }
 function haloMesh(device) {
   const mesh = new pc.Mesh(device);
-  const pos = [0, 0, 0], col = [255, 220, 170, 200], idx = [];
+  const pos = [0, 0, 0], col = [255, 224, 180, 150], idx = [];
   for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI * 2; pos.push(Math.cos(a) * 0.9, Math.sin(a) * 0.9, 0); col.push(255, 200, 140, 0); if (i > 0) idx.push(0, i, i + 1); }
   mesh.setPositions(pos); mesh.setColors32(col); mesh.setIndices(idx); mesh.update(pc.PRIMITIVE_TRIANGLES);
   mesh.incRefCount();
@@ -119,6 +114,16 @@ export class Car {
     const zs = [...byZ.keys()].sort((a, b) => b - a);
     this.wheels0 = [zs[0], zs[zs.length - 1]].map((z) => ({ lx: z, r: byZ.get(z) }));
     this.facing = 1;
+    // Side-view suspension, derived per vehicle so every machine rides clear of the ground:
+    // springs sag 35% of their travel at rest, and both axles reach the ground with the body level
+    // even when the wheels differ in size (the tractor).
+    const rMax = Math.max(...this.wheels0.map((w) => w.r));
+    this.rest = Math.max(S.rest, 0.3);
+    this.reach = this.rest + rMax; // body centre line to the ground, springs fully extended
+    this.kS = -G / 2 / (0.35 * this.rest);
+    this.dS = Math.min(0.7, (S.damp / (1.414 * Math.sqrt(S.k))) * 1.35) * 1.414 * Math.sqrt(this.kS);
+    const ride = this.reach - 0.35 * this.rest; // ride height of the centre line
+    const belly = Math.max(...this.shapes0.map(([, y, r]) => r - y));
 
     this.root = new pc.Entity(`car-${id}`);
     app.root.addChild(this.root);
@@ -149,15 +154,16 @@ export class Car {
       const spin = ent(A.wheels.get(r0), A.mat, pivot, 'wheel');
       spin.setLocalScale(SCALE, SCALE, SCALE);
       spin.setLocalEulerAngles(0, 90, 0);
-      return { lx: w.lx, r: w.r, pivot, spin, comp: 0, prevComp: 0, dist: S.rest + w.r, contact: false, angle: 0 };
+      return { lx: w.lx, r: w.r, pivot, spin, comp: 0, prevComp: 0, dist: this.reach, contact: false, angle: 0 };
     });
     // the beam + a soft halo around the lamp
     this.beam = ent(A.beam, A.glow, this.root, 'beam');
     this.halo = ent(A.halo, A.glow, this.root, 'halo');
     this.beam.render.meshInstances[0].cull = false;
 
-    this.body = new Body({ mass: S.mass, shapes: this.shapes0.map((s) => s.slice()), inertia: S.inertia[0] * S.mass * 1.6, restitution: 0.3, friction: 0.6, kind: 'car', linDamp: 0.05, angDamp: 0.4, buoyant: 0.95 });
+    this.body = new Body({ mass: S.mass, shapes: this.shapes0.map((s) => s.slice()), inertia: S.inertia[0] * S.mass * 1.6, restitution: 0.3, friction: 0.4, kind: 'car', linDamp: 0.05, angDamp: 0.4, buoyant: 0.95 });
     this.body.car = this;
+    this.body.tuck = Math.max(0, belly + 0.12 - ride); // fat colliders ride this much shallower against the ground
     physics.add(this.body);
     if (!local) this.body.kinematic = true;
 
@@ -171,6 +177,7 @@ export class Car {
     this.gadgetT = 0;
     this.flash = 0;
     this.upsideT = 0;
+    this.shield = 0;
     this.hopCd = 0;
     this.speed = 0;
     this.grounded = 0;
@@ -202,6 +209,7 @@ export class Car {
     this.root.enabled = true;
     this.holder.enabled = true;
     this.boost = 1;
+    this.shield = 2.5; // a fresh buggy can't be hurt while it drops in and gets its bearings
     this.setFacing(x > 0 ? -1 : 1); // face the middle of the glade
     this.holderYaw = this.facing * 90;
   }
@@ -210,7 +218,7 @@ export class Car {
   forces(h) {
     const b = this.body;
     if (!b.enabled || this.wrecked) return;
-    const S = this.spec, M = S.mass, K = M * S.k, D = M * S.damp, REST = S.rest, f = this.facing;
+    const S = this.spec, M = S.mass, K = M * this.kS, D = M * this.dS, REST = this.rest, REACH = this.reach, f = this.facing;
     const c = Math.cos(b.a), s = Math.sin(b.a);
     _u[0] = -s; _u[1] = c; // body up
     const fwdX = c * f, fwdY = s * f; // where the nose points
@@ -218,23 +226,30 @@ export class Car {
     this.speed = Math.hypot(b.v[0], b.v[1]);
     const rocket = this.gadget === 'rocket';
     const top = S.top * (rocket && this.boosting ? ROCKET_TOP_K : this.boosting ? BOOST_TOP_K : 1);
-    const per = M / 2;
+    const per = M / (this.grounded === 1 ? 1 : 2); // on one wheel (a steep climb, a wheelie) it takes all the drive
     let contacts = 0;
     for (const w of this.wheels) {
       const mx = b.p[0] + c * w.lx, my = b.p[1] + s * w.lx;
       let g = this.terrain.height(mx);
-      const list = this.physics.statics.query(mx);
-      if (list) for (const o of list) if (!o.off && o.drive && Math.abs(mx - o.x) < o.r * 0.9 && o.y + o.r < my + 0.3) g = Math.max(g, o.y + Math.sqrt(Math.max(0, o.r * o.r - (mx - o.x) ** 2)));
-      const upY = Math.max(_u[1], 0.25);
-      const dist = (my - g) / upY;
+      // wheels also grip whatever lies under them: logs, boulders, barrels, the cage-ball, a rival's roof
+      for (const o of this.physics.bodies) {
+        if (o === b || !o.enabled || Math.abs(o.p[0] - mx) > o.bound) continue;
+        for (let i = 0; i < o.shapes.length; i++) {
+          const cx = o.ws[i][0], cy = o.ws[i][1], r = o.shapes[i][2];
+          if (Math.abs(mx - cx) < r * 0.9 && cy + r < my + 0.3) g = Math.max(g, cy + Math.sqrt(r * r - (mx - cx) ** 2));
+        }
+      }
+      // the spring ray leaves the axle along body-down and meets the sloped ground under it
+      this.terrain.normal(mx, _n);
+      const un = _u[0] * _n[0] + _u[1] * _n[1]; // how squarely the wheels face the ground
+      const dist = ((my - g) * _n[1]) / Math.max(un, 0.25);
       w.prevComp = w.comp;
-      w.contact = _u[1] > 0.2 && dist < REST + w.r;
-      w.dist = Math.min(dist, REST + w.r);
+      w.contact = un > 0.2 && dist < REACH;
+      w.dist = Math.min(dist, REACH);
       if (!w.contact) { w.comp = 0; continue; }
       contacts++;
-      w.comp = Math.min(REST + w.r - dist, REST + 0.25);
+      w.comp = Math.min(REACH - dist, REST + 0.2);
       const fs = Math.max(0, K * w.comp + D * ((w.comp - w.prevComp) / h));
-      this.terrain.normal(mx, _n);
       const rx = mx - b.p[0] - _u[0] * dist, ry = my - b.p[1] - _u[1] * dist; // contact point
       b.addForceAt(_n[0] * fs, _n[1] * fs, rx, ry);
       // drive along the ground
@@ -242,7 +257,7 @@ export class Car {
       b.pointVel(rx, ry, _v);
       const vlong = _v[0] * tx + _v[1] * ty;
       let fl = -vlong * per * 0.12;
-      if (this.throttle > 0.05) fl += this.throttle * per * S.accel * Math.max(0, 1 - vlong / top);
+      if (this.throttle > 0.05) fl += this.throttle * per * S.accel * Math.max(0, Math.min(1, 1.7 * (1 - vlong / top)));
       else if (this.throttle < -0.05) fl -= Math.sign(vlong) * per * 16;
       const cap = fs * 1.3;
       fl = Math.max(-cap, Math.min(cap, fl));
@@ -254,9 +269,23 @@ export class Car {
       const k = M * (rocket ? 26 : S.boostF) * (contacts ? 1 : 0.7) * Math.max(0, Math.min(1, 1.5 * (1 - vFwd / top)));
       b.addForce(fwdX * k, fwdY * k);
     }
-    // air control: left / right spin the buggy (flips!)
-    if (contacts === 0) b.t += -this.input.dir * b.I * 7.5;
-    else if (contacts === 1) b.t += -this.input.dir * b.I * 2.5; // lean into wheelies
+    // air control. Pressing against the way you face spins the buggy that way: a backflip, and
+    // always a choice. Otherwise it steadies itself for the landing (nose a touch up while you
+    // keep driving), so holding your thumb down through a jump never nose-dives you.
+    const wet = this.physics.inWater(b.p[0], b.p[1] - 0.2);
+    if (contacts === 0 && !wet && !(b.grounded > 0)) {
+      const d = this.input.dir, a = Math.atan2(s, c);
+      if (Math.abs(d) > 0.1 && Math.sign(d) !== f) b.t += -d * b.I * 7;
+      else {
+        const want = Math.abs(d) > 0.1 ? 0.12 * f : 0;
+        if (Math.abs(a - want) < 1.4) b.t += ((want - a) * 9 - b.w * 3.2) * b.I;
+      }
+    } else if (contacts === 1) b.t += -this.input.dir * b.I * 2.5; // lean into wheelies
+    // the pond: wheels paddle, so a floating buggy still gets across, and it floats keel-down
+    if (wet) {
+      if (this.throttle > 0.05) b.addForce(f * M * 9 * this.throttle, 0);
+      b.t += (-s * 9 - b.w * 1.5) * b.I;
+    }
     if (Math.abs(b.w) > 9) b.w = Math.sign(b.w) * 9;
   }
 
@@ -264,13 +293,14 @@ export class Car {
   update(dt) {
     const b = this.body, inp = this.input;
     if (this.wrecked) return;
+    if (this.shield > 0) this.shield -= dt;
     // left/right means "go that way": turn around when slow, brake when fast
     const d = inp.dir;
     if (Math.abs(d) < 0.1) this.throttle = 0;
     else if (Math.sign(d) === this.facing) this.throttle = Math.abs(d);
-    else if (this.grounded) {
+    else if (this.grounded || this.wet) { // afloat in the pond you can still turn round
       const vx = b.v[0] * this.facing;
-      if (vx > 2.5) this.throttle = -1;
+      if (vx > 2.5 && this.grounded) this.throttle = -1;
       else this.turnAround();
     } else this.throttle = 0;
     this.boosting = inp.boost && (this.gadget === 'rocket' || this.boost > 0.02);
@@ -282,7 +312,7 @@ export class Car {
     if (inp.hop) {
       inp.hop = false;
       const spring = this.gadget === 'hop';
-      if (this.hopCd <= 0 && (this.grounded || spring)) {
+      if (this.hopCd <= 0 && (this.grounded || b.grounded > 0 || spring)) {
         const k = spring ? 12 : 7;
         b.v[0] += -Math.sin(b.a) * k * 0.4; b.v[1] = Math.max(b.v[1], 0) + Math.cos(b.a) * k;
         this.hopCd = spring ? 0.45 : 0.9;
@@ -312,7 +342,7 @@ export class Car {
   }
 
   damage(amount, by) {
-    if (this.wrecked || amount <= 0) return;
+    if (this.wrecked || amount <= 0 || this.shield > 0) return;
     this.hp -= amount;
     if (by && by !== this) { this.lastHitBy = by; this.lastHitT = performance.now(); }
     if (this.hp <= 0 && this.onWreck) this.onWreck(this);
@@ -359,7 +389,7 @@ export class Car {
     for (const w of this.wheels) {
       if (!this.local) { // estimate suspension from the ground under the wheel
         const mx = b.p[0] + c * w.lx, my = b.p[1] + s * w.lx;
-        w.dist = Math.min(S.rest + w.r, Math.max(w.r * 0.6, (my - this.terrain.height(mx)) / Math.max(0.3, c)));
+        w.dist = Math.min(this.reach, Math.max(this.reach - this.rest, (my - this.terrain.height(mx)) / Math.max(0.3, c)));
       }
       w.angle += (vlong / w.r) * dt;
       w.pivot.setLocalPosition(w.lx, -(w.dist - w.r), 0.45);
@@ -372,7 +402,7 @@ export class Car {
     this.beam.setLocalPosition(lx, ly, 0.6);
     this.beam.setLocalScale(f * (1 + this.flash * 0.35), 1 + this.flash * 0.6, 1);
     this.halo.setLocalPosition(lx, ly, 0.7);
-    const hs = 0.8 + this.flash * 1.4 + Math.sin(time * 23) * 0.04;
+    const hs = 0.5 + this.flash * 1.2 + Math.sin(time * 23) * 0.03;
     this.halo.setLocalScale(hs, hs, 1);
     // gadget props
     for (const [k, e] of Object.entries(this.gadgetEnts)) e.enabled = !this.wrecked && (k === 'flame' ? this.boosting : this.gadget === k);

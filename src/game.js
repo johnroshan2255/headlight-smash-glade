@@ -25,7 +25,8 @@ const store = {
 const nextFrame = () => new Promise((resolve) => { let done = false; const go = () => { if (!done) { done = true; resolve(); } }; requestAnimationFrame(go); setTimeout(go, 60); });
 const r2 = (v) => Math.round(v * 100) / 100;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const TARGET_CARS = 6; // humans + bots
+const QUERY = new URLSearchParams(location.search);
+const TARGET_CARS = QUERY.has('bots') ? 1 + clamp(Number(QUERY.get('bots')) || 0, 0, 7) : 6; // humans + bots (?bots=0 for an empty glade)
 
 async function createDevice(canvas) {
   const pref = new URLSearchParams(location.search).get('gpu') || store.get('renderer', 'auto');
@@ -52,8 +53,12 @@ export async function startGame(loader) {
 
   const quality = new QualityManager({ startLevel: tier, maxLevel: tier, targetFps: info.mobile ? 50 : 55, onChange: (q) => applyQuality(q) });
   const savedQ = store.get('quality', 'auto');
-  let glyph = store.get('glyphSize', 's');
-  let asciiOn = store.get('ascii', '0') === '1';
+  const glyph = store.get('glyphSize', 's');
+  // ASCII view off: the side view always renders normally. To bring it back, restore the saved
+  // setting here and un-comment the lines marked "ASCII view off" (plus index.html, input.js and
+  // the Glitch-Bomb gadget in layout.js).
+  // let asciiOn = store.get('ascii', '0') === '1';
+  const asciiOn = false;
   let palette = store.get('palette', 'color');
   let forcedAsciiT = 0; // the ASCII Glitch-Bomb
 
@@ -150,7 +155,7 @@ export async function startGame(loader) {
       b.v[1] += (8 + 7 * k) * msg.s * (0.5 + k * 0.5);
       b.w += (Math.random() - 0.5) * 10 * k;
       const attacker = msg.by ? cars.get(msg.by) : null;
-      c.damage(Math.min(100, 115 * k * msg.s), attacker && attacker !== c ? attacker : c.lastHitBy);
+      c.damage(Math.min(100, 72 * k * msg.s), attacker && attacker !== c ? attacker : c.lastHitBy);
     }
   }
 
@@ -166,10 +171,20 @@ export async function startGame(loader) {
     onWrecked({ id: c.id, killer: killer ? killer.id : null });
     if (killer && killer !== c) { killer.score++; net.send('score', { killer: killer.id }); }
     setTimeout(() => {
-      c.unwreck(LAYOUT.spawns[Math.floor(Math.random() * LAYOUT.spawns.length)]);
+      if (!cars.has(c.id)) return; // left while wrecked
+      c.unwreck(pickSpawn(c));
       c.gadget = null;
       if (c === me) toast('A fresh buggy drops out of the fog.', 2);
     }, 2000);
+  }
+  /** a clear spawn spot: away from the other buggies and from anything about to blow */
+  function pickSpawn(self) {
+    const others = allCars().filter((c) => c !== self && !c.wrecked);
+    const lit = sandbox.barrels.filter((B) => B.alive && B.fuse > 0);
+    const gap = (x) => Math.min(60, ...others.map((c) => Math.abs(c.body.p[0] - x)), ...lit.map((B) => Math.abs(B.body.p[0] - x) * 2));
+    const ok = LAYOUT.spawns.filter((x) => gap(x) > 9);
+    if (ok.length) return ok[Math.floor(Math.random() * ok.length)];
+    return LAYOUT.spawns.reduce((best, x) => (gap(x) > gap(best) ? x : best), LAYOUT.spawns[0]);
   }
   function onWrecked(msg) {
     const victim = nameOf(msg.id), killer = msg.killer ? nameOf(msg.killer) : null;
@@ -193,11 +208,13 @@ export async function startGame(loader) {
       net.send('shock', { x: r2(p[0]), y: r2(p[1]), by: c.id });
     } else if (c.gadget === 'hop') {
       c.input.hop = true;
-    } else if (c.gadget === 'glitch') {
-      net.send('glitch', { x: r2(p[0]), y: r2(p[1]), by: c.id });
-      glitch({ x: p[0], y: p[1], by: c.id });
-      c.gadget = null;
     }
+    // ASCII view off: the Glitch-Bomb gadget
+    // else if (c.gadget === 'glitch') {
+    //   net.send('glitch', { x: r2(p[0]), y: r2(p[1]), by: c.id });
+    //   glitch({ x: p[0], y: p[1], by: c.id });
+    //   c.gadget = null;
+    // }
   }
   function shockwave(msg) {
     fx.ring(msg.x, msg.y, 10, 1, 24);
@@ -245,6 +262,7 @@ export async function startGame(loader) {
   net.on('car', (s) => {
     let c = cars.get(s.id);
     if (c && c.local) return;
+    if (net.isHost && String(s.id).startsWith('bot')) return; // a late packet from the old host's bots
     if (!c || c.vehicle !== s.veh) { if (c) removeCar(s.id); c = makeCar({ id: s.id, local: false, vehicle: s.veh, colorIdx: s.col || 0, name: s.n, hat: s.hat }); }
     if (s.n && s.n !== c.name) { c.name = s.n; const t = tags.get(s.id); if (t) t.textContent = s.n; }
     if (s.hat && s.hat !== c.hat) c.setHat(s.hat);
@@ -263,7 +281,7 @@ export async function startGame(loader) {
   net.on('boom', applyBoom);
   net.on('grant', (m) => onGrant(m));
   net.on('shock', shockwave);
-  net.on('glitch', glitch);
+  // net.on('glitch', glitch); // ASCII view off
   net.on('honk', (m) => { const c = cars.get(m.from); if (c) { c.flash = 1; sfx.play('honk', { x: c.body.p[0], z: 0 }, { freq: 220 + (c.colorIdx % 4) * 40 }); } });
   net.on('wrecked', onWrecked);
   net.on('world', (m) => sandbox.applyWorld(m));
@@ -289,7 +307,7 @@ export async function startGame(loader) {
       if (!cars.has(id)) {
         const car = makeCar({ id, local: true, vehicle: VEHICLES[(i * 3 + 1) % VEHICLES.length].id, colorIdx: i + 1, name: botName(i), hat: Object.keys(HATS)[(i * 5) % 13] });
         car.isBot = true;
-        car.respawnAt(LAYOUT.spawns[(i * 3 + 2) % LAYOUT.spawns.length]);
+        car.respawnAt(pickSpawn(car));
         bots.set(id, new BotBrain(car, sandbox, game));
       }
       i++;
@@ -331,7 +349,7 @@ export async function startGame(loader) {
   setupFullscreen({ button: $('btnFull'), canvas, touchDevice: touchUI, onChange: () => app.resizeCanvas() });
 
   // ---------------------------------------------------------------- side camera
-  let camX = 0, camY = 2, camZ = info.mobile ? 26 : 30, lead = 0;
+  let camX = 0, camY = 2, camZ = info.mobile ? 26 : 30, lead = 0, zoomK = 1;
   const camPos = new pc.Vec3();
   function updateCamera(dt) {
     camZ = clamp(camZ * (1 + input.consumeZoom()), 18, 50);
@@ -341,15 +359,16 @@ export async function startGame(loader) {
       const b = me.body;
       lead += ((me.wrecked ? 0 : me.facing * 3.5 + b.v[0] * 0.3) - lead) * (1 - Math.exp(-dt * 1.8));
       const tx = clamp(b.p[0] + lead, -LAYOUT.halfW + 14, LAYOUT.halfW - 14);
-      const ty = b.p[1] + (portrait ? 1.5 : 2.6);
+      const ty = b.p[1] + camZ * zoomK * (portrait ? 0.19 : 0.14); // keeps the buggy low in the frame at any zoom
+      zoomK += ((me.wrecked ? 1 : 1 + Math.min(1, me.speed / 22) * 0.2) - zoomK) * (1 - Math.exp(-dt * 1.2));
       camX += (tx - camX) * (1 - Math.exp(-dt * 4));
       camY += (ty - camY) * (1 - Math.exp(-dt * (Math.abs(ty - camY) > 6 ? 5 : 2.6)));
     }
     let sx = 0, sy = 0;
     const s = fx.shake * fx.shake * 0.5;
     if (s > 0.001) { sx = (Math.random() - 0.5) * s; sy = (Math.random() - 0.5) * s; }
-    const z = camZ * (portrait ? 1.25 : 1);
-    camPos.set(camX + sx, camY + sy + 1.2, z);
+    const z = camZ * zoomK * (portrait ? 1.9 : 1); // portrait is narrow: pull back to see what's coming
+    camPos.set(camX + sx, camY + sy + 0.6, z);
     ascii.sceneCam.setPosition(camPos);
     ascii.sceneCam.lookAt(camX + sx, camY + sy, 0);
   }
@@ -359,7 +378,8 @@ export async function startGame(loader) {
   let showStats = store.get('stats', '0') === '1' || new URLSearchParams(location.search).has('stats');
   statsEl.hidden = !showStats;
   $('optStats').checked = showStats;
-  $('optQuality').value = savedQ; $('optGlyph').value = glyph; $('optPalette').value = palette;
+  $('optQuality').value = savedQ; $('optPalette').value = palette;
+  // $('optGlyph').value = glyph; // ASCII view off
   $('optRenderer').value = store.get('renderer', 'auto');
   let paused = false;
   const openSettings = (open) => { $('settings').hidden = !open; paused = open && !net.online; };
@@ -368,15 +388,17 @@ export async function startGame(loader) {
   $('btnLeave').addEventListener('click', () => { net.leave(); location.reload(); });
   window.addEventListener('keydown', (e) => { if (e.code === 'Escape') openSettings($('settings').hidden); });
   $('optQuality').addEventListener('change', (e) => { store.set('quality', e.target.value); quality.setManual(e.target.value); if (e.target.value === 'auto') quality.maxLevel = tier; });
-  $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
+  // ASCII view off
+  // $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
   $('optPalette').addEventListener('change', (e) => { palette = e.target.value; store.set('palette', palette); u.mono.setValue(palette === 'mono' ? 1 : 0); });
   $('optRenderer').addEventListener('change', (e) => { store.set('renderer', e.target.value); location.reload(); });
   $('optStats').addEventListener('change', (e) => { showStats = e.target.checked; statsEl.hidden = !showStats; store.set('stats', showStats ? '1' : '0'); });
-  const btnAscii = $('btnAscii');
-  const syncAsciiBtn = () => { btnAscii.classList.toggle('on', asciiOn); btnAscii.textContent = asciiOn ? '[@] ASCII' : '[ ] ASCII'; };
-  const setAscii = (on, save = true) => { asciiOn = on; if (save) store.set('ascii', on ? '1' : '0'); ascii.setOptions({ ascii: on || forcedAsciiT > 0 }); resized(); syncAsciiBtn(); };
-  btnAscii.addEventListener('click', (e) => { e.stopPropagation(); setAscii(!asciiOn); });
-  syncAsciiBtn();
+  // ASCII view off: the HUD toggle
+  // const btnAscii = $('btnAscii');
+  // const syncAsciiBtn = () => { btnAscii.classList.toggle('on', asciiOn); btnAscii.textContent = asciiOn ? '[@] ASCII' : '[ ] ASCII'; };
+  // const setAscii = (on, save = true) => { asciiOn = on; if (save) store.set('ascii', on ? '1' : '0'); ascii.setOptions({ ascii: on || forcedAsciiT > 0 }); resized(); syncAsciiBtn(); };
+  // btnAscii.addEventListener('click', (e) => { e.stopPropagation(); setAscii(!asciiOn); });
+  // syncAsciiBtn();
   document.addEventListener('visibilitychange', () => { app.timeScale = document.hidden && !net.online ? 0 : 1; });
 
   function updateBoard() {
@@ -396,7 +418,7 @@ export async function startGame(loader) {
     $('hpBar').classList.toggle('low', me.hp < 35);
     const g = me.gadget;
     $('gadget').hidden = !g;
-    if (g) $('gadget').textContent = `${GADGETS[g].name}  ${Math.ceil(me.gadgetT)}s${['mine', 'horn', 'hop', 'glitch'].includes(g) ? (touchUI ? '  · GADGET' : '  · E') : ''}`;
+    if (g) $('gadget').textContent = `${GADGETS[g].name}  ${Math.ceil(me.gadgetT)}s${['mine', 'horn', 'hop'].includes(g) ? (touchUI ? '  · GADGET' : '  · E') : ''}`;
     const humans = net.online ? net.players.length : 1;
     $('mode').textContent = net.online ? `ONLINE${net.code ? ` · ${net.code}` : ''} · ${humans} driver${humans > 1 ? 's' : ''} + ${Math.max(0, allCars().length - humans)} bots` : `SOLO · ${bots.size} bots`;
     $('hats').textContent = `HATS ${sandbox.ownedHats.size}/12`;
@@ -462,7 +484,8 @@ export async function startGame(loader) {
     if (device.width && device.height) resized();
     time += dt;
     input.poll(dt);
-    if (input.sightPressed) setAscii(!asciiOn);
+    // ASCII view off: the V key and the Glitch-Bomb's forced ASCII
+    // if (input.sightPressed) setAscii(!asciiOn);
     if (forcedAsciiT > 0) { forcedAsciiT -= dt; if (!ascii.ascii) { ascii.setOptions({ ascii: true }); resized(); } if (forcedAsciiT <= 0 && !asciiOn) { ascii.setOptions({ ascii: false }); resized(); } }
     if (started && !paused && me && dt > 1e-5) {
       const inp = me.input;
@@ -529,7 +552,7 @@ export async function startGame(loader) {
   const showroom = VEHICLES.map((v, i) => { const c = makeCar({ id: `warm${i}`, local: false, vehicle: v.id, colorIdx: i, name: '' }); c.body.set(-12 + i * 3, terrain.height(-12 + i * 3) + 1, 0); return c; });
   camX = 0; camY = terrain.height(0) + 2;
   const warmed = new Promise((resolve) => { onWarm = resolve; });
-  ascii.setOptions({ ascii: !asciiOn });
+  // ascii.setOptions({ ascii: !asciiOn }); // ASCII view off: no need to warm the glyph pipeline too
   resized();
   warmFrames = WARM * 2;
   app.start();
@@ -563,7 +586,7 @@ export async function startGame(loader) {
       if (!net.online) { net.id = 'local'; net.hostId = 'local'; }
       sandbox.setAuthority();
       me = makeCar({ id: net.id, local: true, vehicle, colorIdx: color, name, hat });
-      me.respawnAt(LAYOUT.spawns[Math.floor(Math.random() * LAYOUT.spawns.length)]);
+      me.respawnAt(pickSpawn(me));
       camX = me.body.p[0]; camY = me.body.p[1] + 2;
       started = true;
       quality.cooldown = 3;

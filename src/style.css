@@ -389,3 +389,16 @@ body.touch #meters { left: 50%; transform: translateX(-50%); bottom: auto; top: 
 body.touch #pedals { display: flex; }
 .act.pedal { min-width: 86px; padding: 30px 10px; font-size: 22px; }
 body.touch #meters { top: calc(max(10px, env(safe-area-inset-top)) + 46px); }
+
+/* side view on touch screens: the pedals sit bottom-left, the action buttons stack up the right
+   edge, and toasts drop below the meters. Narrow portrait phones get one column of actions so
+   the two clusters never meet. */
+body.touch #toast { top: calc(max(10px, env(safe-area-inset-top)) + 112px); }
+@media (orientation: portrait) and (max-width: 520px) {
+  body.touch #pedals { gap: 8px; }
+  body.touch .act.pedal { min-width: 72px; padding: 28px 6px; }
+  body.touch #actions { gap: 8px; }
+  body.touch #actions .row:last-child { flex-direction: column-reverse; align-items: flex-end; gap: 8px; }
+  body.touch #actions .act { min-width: 78px; }
+  body.touch #actions .act.hot { padding: 24px 8px; }
+}
