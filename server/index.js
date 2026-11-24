@@ -12,6 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server, Room, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
+import { api } from './accounts.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const PORT = Number(process.env.PORT || 2567);
@@ -23,9 +24,14 @@ class GladeRoom extends Room {
     this.maxClients = MAX_PLAYERS;
     this.roster = new Map(); // sessionId -> { name, color, vehicle, hat, score, joined }
     this.hostId = null;
-    this.setMetadata({ code: options.code || '' });
+    // room settings, chosen by whoever creates the room: hidden from the list? how many bots?
+    //   bots: -1 = fill the empty seats (the public glade), 0..6 = exactly that many
+    this.settings = { private: !!options.private && !!options.code, bots: GladeRoom.botCount(options.bots) };
+    this.setMetadata({ code: options.code || '', private: this.settings.private, bots: this.settings.bots });
     this.onMessage('*', (client, type, msg) => this.relay(client, String(type), msg || {}));
   }
+
+  static botCount(b) { const n = Math.round(Number(b)); return Number.isFinite(n) && n >= -1 && n <= 6 ? n : -1; }
 
   freeColor() {
     const used = new Set([...this.roster.values()].map((p) => p.color));
@@ -38,26 +44,31 @@ class GladeRoom extends Room {
   }
 
   sendRoster() {
-    this.broadcast('roster', { hostId: this.hostId, players: this.rosterList() });
+    this.broadcast('roster', { hostId: this.hostId, players: this.rosterList(), settings: this.settings });
   }
 
   onJoin(client, options = {}) {
     const name = String(options.name || 'Driver').replace(/[^\w \-.]/g, '').slice(0, 16) || 'Driver';
     const p = { name, color: this.freeColor(), vehicle: String(options.vehicle || 'mudrunner').slice(0, 16), hat: String(options.hat || 'straw').slice(0, 12), score: 0, joined: Date.now() };
     this.roster.set(client.sessionId, p);
-    if (!this.hostId) this.hostId = client.sessionId;
-    client.send('welcome', { id: client.sessionId, hostId: this.hostId, color: p.color, players: this.rosterList() });
+    if (this.closing) { client.leave(4000); return; } // too late: the host just left
+    if (!this.hostId) { this.hostId = client.sessionId; this.hostName = name; }
+    client.send('welcome', { id: client.sessionId, hostId: this.hostId, color: p.color, players: this.rosterList(), settings: this.settings });
     this.sendRoster();
   }
 
   onLeave(client) {
+    const wasHost = this.hostId === client.sessionId;
     this.roster.delete(client.sessionId);
-    if (this.hostId === client.sessionId) {
-      // hand the props over to whoever has been here longest
-      let oldest = null;
-      for (const [id, p] of this.roster) if (!oldest || p.joined < this.roster.get(oldest).joined) oldest = id;
-      this.hostId = oldest;
+    if (wasHost) {
+      // the host owns the room: when they go, the room goes, and everyone is sent back to the menu
+      const name = this.hostName || 'The host';
+      this.broadcast('roomClosed', { reason: `${name} left, so the room closed.` });
+      this.closing = true;
+      setTimeout(() => this.disconnect(), 150); // let the message land first
+      return;
     }
+    // a guest leaving: just their car goes, the room carries on
     this.broadcast('left', { id: client.sessionId });
     this.sendRoster();
   }
@@ -65,6 +76,14 @@ class GladeRoom extends Room {
   relay(client, type, msg) {
     const p = this.roster.get(client.sessionId);
     if (!p) return;
+    if (type === 'roomSettings') { // only the host may change the room
+      if (client.sessionId !== this.hostId) return;
+      if (msg.bots !== undefined) this.settings.bots = GladeRoom.botCount(msg.bots);
+      if (msg.private !== undefined && this.metadata.code) this.settings.private = !!msg.private;
+      this.setMetadata({ ...this.metadata, private: this.settings.private, bots: this.settings.bots });
+      this.sendRoster();
+      return;
+    }
     if (type === 'profile') {
       if (msg.vehicle) p.vehicle = String(msg.vehicle).slice(0, 16);
       if (msg.hat) p.hat = String(msg.hat).slice(0, 12);
@@ -108,7 +127,8 @@ function serveStatic(req, res) {
 async function listRooms(res) {
   let rooms = [];
   try { rooms = await matchMaker.query({ name: 'glade' }); } catch { /* none yet */ }
-  const list = rooms.filter((r) => !r.locked || r.clients < r.maxClients).map((r) => ({ code: r.metadata?.code || '', players: r.clients, max: r.maxClients }));
+  // private rooms are never listed: you need the code
+  const list = rooms.filter((r) => !r.metadata?.private && (!r.locked || r.clients < r.maxClients)).map((r) => ({ code: r.metadata?.code || '', players: r.clients, max: r.maxClients, bots: r.metadata?.bots ?? -1 }));
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify(list));
 }
@@ -123,6 +143,7 @@ httpServer.removeAllListeners('request');
 const isColyseus = (url = '') => url.startsWith('/matchmake') || url.startsWith('/__') || url.startsWith('/auth');
 httpServer.on('request', (req, res) => {
   if (isColyseus(req.url)) for (const h of colyseusHandlers) h.call(httpServer, req, res);
+  else if ((req.url || '').startsWith('/api/')) api(req, res, (req.url || '').split('?')[0]);
   else serveStatic(req, res);
 });
 console.log(`\n  HEADLIGHT: SMASH GLADE  ->  http://localhost:${PORT}  (rooms on the same port)\n`);

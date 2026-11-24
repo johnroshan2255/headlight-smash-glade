@@ -11,6 +11,7 @@ export class Net {
     this.handlers = new Map();
     this.room = null;
     this.code = '';
+    this.settings = { private: false, bots: -1 }; // the room's: hidden? how many bots (-1 = fill)
   }
 
   get isHost() { return this.hostId === this.id; }
@@ -34,29 +35,32 @@ export class Net {
     return null;
   }
 
-  async connect(url, { code = '', name, vehicle, hat }) {
+  async connect(url, { code = '', name, vehicle, hat, private: priv = false, bots = -1 }) {
     const client = new Client(url);
-    const join = client.joinOrCreate('glade', { code, name, vehicle, hat });
+    // the room is created with these settings if it doesn't exist yet; joiners get the room's own
+    const join = client.joinOrCreate('glade', { code, name, vehicle, hat, private: priv, bots });
     const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 6000));
     this.room = await Promise.race([join, timeout]);
     this.code = code;
     this.id = this.room.sessionId;
     this.online = true;
     const welcome = new Promise((resolve) => {
-      this.room.onMessage('welcome', (msg) => { this.hostId = msg.hostId; this.players = msg.players; this.color = msg.color; resolve(msg); });
+      this.room.onMessage('welcome', (msg) => { this.hostId = msg.hostId; this.players = msg.players; this.color = msg.color; if (msg.settings) this.settings = msg.settings; resolve(msg); });
     });
     this.room.onMessage('roster', (msg) => {
       const wasHost = this.isHost;
       this.hostId = msg.hostId;
       this.players = msg.players;
+      if (msg.settings) this.settings = msg.settings;
       this.emit('roster', msg);
       if (!wasHost && this.isHost) this.emit('becameHost', msg);
     });
     this.room.onMessage('*', (type, msg) => {
-      if (type === 'welcome' || type === 'roster') return;
+      if (type === 'welcome' || type === 'roster' || type === 'roomClosed') return;
       this.emit(type, msg);
     });
-    this.room.onLeave(() => { this.online = false; this.emit('disconnected', {}); });
+    this.room.onMessage('roomClosed', (msg) => { this.closed = msg.reason || 'The room closed.'; });
+    this.room.onLeave((code) => { this.online = false; if (!this.leaving) this.emit('disconnected', { code, reason: this.closed }); });
     await Promise.race([welcome, new Promise((r) => setTimeout(r, 3000))]);
     return this;
   }
@@ -66,5 +70,5 @@ export class Net {
     try { this.room.send(type, msg); } catch { /* socket closing */ }
   }
 
-  leave() { try { this.room?.leave(); } catch { /* */ } this.online = false; }
+  leave() { this.leaving = true; try { this.room?.leave(); } catch { /* */ } this.online = false; }
 }

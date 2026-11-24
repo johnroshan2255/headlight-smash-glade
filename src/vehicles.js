@@ -2,10 +2,10 @@
 import { CLS } from './shaders.js';
 import { MeshBuilder, rgba, addTube, addLathe, addSphere, addBox } from './meshes.js';
 
-const metal = (v = 0) => rgba(0.1 + v, 0.1 + v, 0.11 + v, CLS.CHAR);
-const iron = (v = 0) => rgba(0.18 + v, 0.18 + v, 0.19 + v, CLS.STONE);
-const wood = (v = 0) => rgba(0.2 + v, 0.15 + v, 0.1 + v, CLS.GROUND);
-const bone = (v = 0) => rgba(0.62 + v, 0.58 + v, 0.5 + v, CLS.CHAR);
+const metal = (v = 0) => rgba(0.16 + v, 0.16 + v, 0.17 + v, CLS.CHAR); // gunmetal
+const iron = (v = 0) => rgba(0.26 + v, 0.22 + v, 0.19 + v, CLS.STONE); // rusty iron
+const wood = (v = 0) => rgba(0.34 + v, 0.23 + v, 0.13 + v, CLS.GROUND); // weathered wood
+const bone = (v = 0) => rgba(0.5 + v, 0.46 + v, 0.38 + v, CLS.CHAR); // old yellowed bone
 const paintOf = ([r, g, b]) => (v = 0) => rgba(r * 0.95 + v, g * 0.95 + v, b * 0.95 + v, CLS.CHAR);
 
 function driver(mb, x, y, z, color) {
@@ -104,6 +104,38 @@ const BUILD = {
     addTube(mb, [[-0.45, 1.3, -0.9, 0.06], [-0.45, 1.9, -0.95, 0.07]], { seg: 6, colFn: () => metal(0.12) });
     driver(mb, 0, 0.6, -0.45, c);
   },
+  barrow(mb, c) {
+    // a wooden wheelbarrow tray on handles, one big wheel up front
+    const paint = paintOf(c);
+    addLathe(mb, [[0.0, -0.1], [0.55, -0.08], [0.75, 0.25], [0.8, 0.45], [0.0, 0.42]], { seg: 4, sx: 0.85, sz: 1.25, y: -0.05, z: 0.15, colFn: (t) => (t > 0.6 ? paint(0.02) : wood(0)) });
+    for (const s of [-1, 1]) addTube(mb, [[0.45 * s, 0.05, 1.1, 0.05], [0.5 * s, 0.1, 0.0, 0.05], [0.55 * s, 0.25, -1.2, 0.045], [0.58 * s, 0.4, -1.5, 0.05]], { seg: 5, colFn: () => wood(0.04) }); // the handles
+    for (const s of [-1, 1]) addTube(mb, [[0.3 * s, -0.05, 1.05, 0.04], [0.08 * s, -0.25, 1.35, 0.04]], { seg: 4, colFn: () => metal(0.06) }); // the wheel fork
+    driver(mb, 0, 0.2, -0.2, c);
+  },
+  roller(mb, c) {
+    // an iron steam-roller: boiler, smokestack, canopy, and a huge drum up front
+    const paint = paintOf(c);
+    addLathe(mb, [[0.0, -0.75], [0.55, -0.72], [0.6, 0.0], [0.55, 0.72], [0.0, 0.75]], { seg: 14, y: 0.55, z: 0.1, warp: (x, y, z) => [x, z, y], colFn: () => iron(0.02) }); // the boiler, lying along z
+    addTube(mb, [[0, 1.05, 0.65, 0.13], [0, 1.9, 0.65, 0.12], [0, 2.0, 0.65, 0.17]], { seg: 8, colFn: () => metal(0.1) }); // smokestack
+    addBox(mb, { y: 0.55, z: -0.95, sx: 1.3, sy: 1.0, sz: 0.9, col: (t) => paint(t * 0.04) }); // the cab
+    addBox(mb, { y: 1.95, z: -0.7, sx: 1.5, sy: 0.08, sz: 1.6, col: metal(0.05) }); // canopy roof
+    for (const [x, z] of [[-0.68, -1.35], [0.68, -1.35], [-0.68, -0.1], [0.68, -0.1]]) addTube(mb, [[x, 1.0, z, 0.04], [x, 1.95, z, 0.04]], { seg: 4, colFn: () => metal(0.08) });
+    for (const s of [-1, 1]) addTube(mb, [[0.62 * s, 0.4, 0.5, 0.06], [0.75 * s, 0.25, 1.35, 0.06]], { seg: 5, colFn: () => iron(0.08) }); // the drum yoke
+    driver(mb, 0, 0.85, -0.9, c);
+  },
+  bus(mb, c) {
+    // a double-decker bus made of rattling cages: tall, wobbly, top-heavy
+    const paint = paintOf(c);
+    addBox(mb, { y: 0.15, z: 0, sx: 1.3, sy: 0.55, sz: 3.6, col: (t) => paint(t * 0.04) }); // the chassis deck
+    for (const [y0, y1] of [[0.45, 1.45], [1.55, 2.55]]) {
+      for (const s of [-1, 1]) for (let i = 0; i <= 6; i++) addTube(mb, [[0.62 * s, y0, -1.75 + i * 0.58, 0.035], [0.62 * s, y1, -1.75 + i * 0.58, 0.035]], { seg: 4, colFn: () => metal(0.06) }); // cage bars
+      for (const y of [y0, y1]) for (const s of [-1, 1]) addTube(mb, [[0.62 * s, y, -1.8, 0.04], [0.62 * s, y, 1.8, 0.04]], { seg: 4, colFn: () => metal(0.04) });
+      addBox(mb, { y: y1 + 0.04, sx: 1.3, sy: 0.08, sz: 3.6, col: metal(0.02) }); // each floor
+    }
+    addBox(mb, { y: 0.95, z: 1.6, sx: 1.2, sy: 1.0, sz: 0.3, col: (t) => paint(0.03 + t * 0.03) }); // the cab front
+    for (let i = 0; i < 3; i++) addBox(mb, { x: 0.63, y: 2.0, z: -1.2 + i * 1.1, sx: 0.02, sy: 0.35, sz: 0.5, col: rgba(0.55, 0.42, 0.22, CLS.GLOW) }); // lit upper windows
+    driver(mb, 0, 0.45, 1.1, c);
+  },
 };
 
 // -------------------------------------------------------------------- specs
@@ -125,6 +157,12 @@ export const VEHICLES = [
     wheels: [[-0.72, 1.05, 1, 0.3], [0.72, 1.05, 1, 0.3], [-0.78, -0.95, 0, 0.32], [0.78, -0.95, 0, 0.32]], spheres: [[0, 0.0, 0.75, 0.45], [0, 0.0, -0.75, 0.45]], lamps: [[-0.25, 0.5, 1.35], [0.25, 0.5, 1.35]], seat: [0, 1.05, -0.42], flame: [0, 0.1, -1.4], front: 1.4 },
   { id: 'dozer', name: 'Shrine Dozer', blurb: 'Slow. Wide stone blade. Unstoppable.', mass: 340, top: 16, accel: 17, grip: 17, steer: 0.48, k: 32, damp: 3.6, rest: 0.35, boostF: 13, inertia: [1.1, 1.2, 0.6],
     wheels: [[-0.9, 0.9, 1, 0.42], [0.9, 0.9, 1, 0.42], [-0.9, -1.1, 0, 0.42], [0.9, -1.1, 0, 0.42]], spheres: [[0, 0.2, 1.3, 0.65], [0, 0.3, -0.3, 0.75]], lamps: [[-0.45, 1.25, 0.08], [0.45, 1.25, 0.08]], seat: [0, 1.35, -0.42], flame: [-0.45, 1.95, -0.95], front: 1.9, plowish: true },
+  { id: 'barrow', name: 'Wheelbarrow Kart', blurb: 'One giant wheel, two tiny casters. Hilariously fast and unstable.', mass: 130, top: 27, accel: 21, grip: 12, steer: 0.7, k: 22, damp: 2.2, rest: 0.35, boostF: 15, inertia: [0.42, 0.55, 0.22],
+    wheels: [[0, 1.15, 1, 0.62], [-0.5, -1.0, 0, 0.2], [0.5, -1.0, 0, 0.2]], spheres: [[0, 0.25, 0.4, 0.5], [0, 0.25, -0.6, 0.45]], lamps: [[0, 0.62, 1.3], [0, 0.62, 1.3]], seat: [0, 0.95, -0.22], flame: [0, 0.3, -1.4], front: 1.75 },
+  { id: 'roller', name: 'Iron Steam-Roller', blurb: 'A huge front drum. Flattens anything it rolls onto.', mass: 380, top: 15, accel: 18, grip: 16, steer: 0.45, k: 30, damp: 3.6, rest: 0.32, boostF: 13, inertia: [1.1, 1.2, 0.6],
+    wheels: [[0, 1.35, 1, 0.78], [-0.75, -1.15, 0, 0.5], [0.75, -1.15, 0, 0.5]], spheres: [[0, 0.55, 0.3, 0.72], [0, 0.6, -0.95, 0.62]], lamps: [[-0.35, 1.0, 1.05], [0.35, 1.0, 1.05]], seat: [0, 1.6, -0.92], flame: [0, 2.05, 0.65], front: 2.2, crusher: true },
+  { id: 'bus', name: 'Cage Bus', blurb: 'A tall, top-heavy double-decker of rattling cages. Tips over constantly.', mass: 300, top: 19, accel: 16, grip: 13, steer: 0.5, k: 26, damp: 3.0, rest: 0.4, boostF: 13, inertia: [0.95, 1.1, 0.4],
+    wheels: [[-0.7, 1.25, 1, 0.45], [0.7, 1.25, 1, 0.45], [-0.7, -1.25, 0, 0.45], [0.7, -1.25, 0, 0.45]], spheres: [[0, 0.5, 1.05, 0.62], [0, 0.5, -1.05, 0.62], [0, 1.55, 0.6, 0.62], [0, 1.55, -0.6, 0.62], [0, 2.2, 0, 0.55]], lamps: [[-0.5, 0.3, 1.82], [0.5, 0.3, 1.82]], seat: [0, 1.2, 1.1], flame: [0.5, 0.2, -1.9], front: 1.9, tall: true },
 ];
 // Toy scale: the meshes are modelled at "real buggy" size and the chassis entity is scaled down;
 // the physics (wheels, colliders, suspension) is scaled here to match. Lamps/seat/flame/front stay

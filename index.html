@@ -22,6 +22,7 @@
     <div id="status">
       <div id="mode">SOLO</div>
       <div id="hats">HATS 0/12</div>
+      <div id="coins"></div>
     </div>
     <div class="hud-right">
       <!-- ASCII view switched off for the side view (re-enable together with the code marked "ASCII view off" in src/game.js)
@@ -55,7 +56,11 @@
       <button id="btnHorn" class="act small" aria-label="Horn">HONK</button>
       <button id="btnFlip" class="act small" aria-label="Flip upright">FLIP</button>
     </div>
-    <button id="btnGadget" class="act" aria-label="Use gadget">GADGET</button>
+    <div class="row">
+      <button id="btnGadget" class="act small" aria-label="Use crate power-up" hidden>POWER</button>
+      <button id="btnBumper" class="act" aria-label="Bumper gadget" hidden>BUMPER</button>
+      <button id="btnRoof" class="act" aria-label="Roof gadget" hidden>ROOF</button>
+    </div>
     <div class="row">
       <button id="btnHop" class="act" aria-label="Hop">HOP</button>
       <button id="btnBoost" class="act hot" aria-label="Boost">BOOST</button>
@@ -66,8 +71,21 @@
   <div id="settings" hidden>
     <div class="panel">
       <h2>Settings</h2>
-      <label>Ride <select id="optRide"></select></label>
-      <label>Hat <select id="optHatIn"></select></label>
+      <button id="btnGarageIn" class="garageIn">GARAGE</button>
+      <div id="roomBox" hidden>
+        <label>Room <b id="roomCodeIn" class="roomcode"></b></label>
+        <label>Bots
+          <select id="optBots">
+            <option value="0">None</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="6">6</option>
+            <option value="-1">Fill empty seats</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" id="optPrivate" /> Private (hidden from the open glades list)</label>
+        <p class="help" id="roomHintIn"></p>
+      </div>
       <label>Quality
         <select id="optQuality">
           <option value="auto">Auto (adaptive)</option>
@@ -103,12 +121,56 @@
       <label class="row"><input type="checkbox" id="optStats" /> Show performance stats</label>
       <p class="help">
         Drive: A D / arrows / d-pad (the other way = brake, then turn around) &nbsp; Boost: W / Shift / RT<br />
-        Hop: Space / A button &nbsp; Gadget: E / X &nbsp; Horn: H / Y &nbsp; Headlight flash: L / LB &nbsp; Flip: R / Start<br />
+        Hop: Space / A &nbsp; Roof gadget: E / X &nbsp; Bumper gadget: Q / B &nbsp; Crate power-up: F &nbsp; Horn: H / Y &nbsp; Headlight flash: L / LB &nbsp; Flip: R / Start<br />
         In the air, left/right spins you &nbsp; Scores: hold Tab &nbsp; Zoom: wheel<!-- &nbsp; ASCII: V --></p>
       <button id="btnClose">Back to the glade</button>
       <button id="btnLeave" class="danger">Leave to menu</button>
     </div>
   </div>
+
+  <!-- account chip: who you are and your coins (menu and garage) -->
+  <button id="acctChip" hidden><span id="acctName">GUEST</span><b id="acctCoins">0 ¢</b></button>
+
+  <!-- the garage: the car is the live preview in the scene behind -->
+  <section id="garageUI" hidden aria-label="Garage">
+    <header class="g-top">
+      <button class="back" id="gBack">&#8249; BACK</button>
+      <h2>GARAGE</h2>
+      <span></span>
+    </header>
+    <div class="g-panel">
+      <nav class="g-tabs" id="gTabs"></nav>
+      <div class="g-items" id="gItems"></div>
+      <div class="g-foot">
+        <div class="g-info"><b id="gName"></b><span id="gBlurb"></span><div class="bars" id="gStats"></div></div>
+        <label class="g-tire" id="gTireRow" hidden><span>TIRE SIZE <i id="gTireVal">100%</i></span><input type="range" id="gTire" min="70" max="140" step="5" value="100" /></label>
+        <button class="mbtn go" id="gAction">EQUIP</button>
+      </div>
+      <p class="g-msg" id="gMsg"></p>
+    </div>
+  </section>
+
+  <!-- sign in / register -->
+  <section id="acctUI" hidden aria-label="Account">
+    <div class="a-card">
+      <header class="lobby-head"><button class="back" id="aBack">&#8249; BACK</button><h2 id="aTitle">ACCOUNT</h2><span></span></header>
+      <div id="aSignedOut">
+        <nav class="a-tabs"><button id="aTabReg" class="on">REGISTER</button><button id="aTabLog">SIGN IN</button></nav>
+        <label class="lbl" for="aName">NAME</label>
+        <input id="aName" class="field" maxlength="16" autocomplete="username" spellcheck="false" />
+        <label class="lbl" for="aPass">PASSWORD</label>
+        <input id="aPass" class="field" type="password" maxlength="64" autocomplete="current-password" />
+        <p class="hint" id="aHint">Keep your coins and garage on every device. Your guest progress moves into the new account.</p>
+        <button class="mbtn go wide" id="aGo">REGISTER</button>
+      </div>
+      <div id="aSignedIn" hidden>
+        <p class="a-who">Signed in as <b id="aWho"></b></p>
+        <div class="a-stats" id="aStats"></div>
+        <button class="mbtn wide" id="aOut">SIGN OUT</button>
+      </div>
+      <p class="g-msg" id="aMsg"></p>
+    </div>
+  </section>
 
   <!-- Loading screen + garage: pure HTML/CSS/SVG, visible before any JS runs -->
   <div id="boot">
@@ -174,6 +236,7 @@
       <nav id="menu" hidden>
         <button id="btnPlay" class="mbtn go">PLAY</button>
         <button id="btnCoop" class="mbtn">CO-OP</button>
+        <button id="btnGarage" class="mbtn">GARAGE</button>
       </nav>
 
       <!-- co-op lobby -->
@@ -186,30 +249,35 @@
 
         <div class="lobby-body">
           <div class="lobby-col">
-            <label class="lbl" for="optRoom">ROOM CODE</label>
-            <div class="code-row">
-              <input id="optRoom" maxlength="8" placeholder="PUBLIC" autocomplete="off" spellcheck="false" autocapitalize="characters" />
-              <button id="btnNewCode" class="ghost" title="Make a private room">NEW</button>
+            <nav class="a-tabs l-tabs"><button id="lTabJoin" class="on">JOIN</button><button id="lTabCreate">CREATE ROOM</button></nav>
+            <div id="lJoin">
+              <label class="lbl" for="optRoom">ROOM CODE</label>
+              <div class="code-row">
+                <input id="optRoom" maxlength="8" placeholder="PUBLIC" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+              </div>
+              <p class="hint" id="roomHint">Type a friend's code, or leave it empty for the public glade.</p>
+              <div class="glades" id="glades" aria-live="polite"></div>
             </div>
-            <p class="hint" id="roomHint">Leave it empty for the public glade, or share a code with friends.</p>
-            <div class="glades" id="glades" aria-live="polite"></div>
+            <div id="lCreate" hidden>
+              <span class="lbl">YOUR ROOM CODE</span>
+              <div class="code-row">
+                <b class="bigcode" id="newCode">----</b>
+                <button id="btnNewCode" class="ghost" title="A different code">NEW</button>
+                <button id="btnCopyCode" class="ghost" title="Copy the code">COPY</button>
+              </div>
+              <p class="hint">Share this code. Friends pick CO-OP, then type it under JOIN.</p>
+              <span class="lbl">BOTS</span>
+              <div class="chips" id="botChips"><button data-b="0" class="on">NONE</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="-1">FILL SEATS</button></div>
+              <label class="check"><input type="checkbox" id="optHide" checked /> Hidden from the open glades list</label>
+            </div>
           </div>
 
           <div class="lobby-col">
             <label class="lbl" for="optName">NAME</label>
             <input id="optName" class="field" maxlength="16" autocomplete="off" spellcheck="false" />
-            <span class="lbl">RIDE</span>
-            <div class="ride">
-              <button class="arrow" id="vehPrev" aria-label="Previous ride">&#8249;</button>
-              <div class="ride-card">
-                <div id="vehName">MUDRUNNER</div>
-                <div id="vehBlurb"></div>
-                <div class="bars" id="vehStats"></div>
-              </div>
-              <button class="arrow" id="vehNext" aria-label="Next ride">&#8250;</button>
-            </div>
-            <label class="lbl" for="optHat">HAT</label>
-            <select id="optHat" class="field"></select>
+            <span class="lbl">YOUR RIDE</span>
+            <button class="ride-line" id="lobbyRide">MUDRUNNER</button>
+            <p class="hint">Change it in the garage.</p>
           </div>
         </div>
 

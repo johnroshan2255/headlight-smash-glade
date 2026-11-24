@@ -116,7 +116,11 @@ uniform float uTime;
 uniform float uSway;
 varying vec3 vWorld;
 varying float vCls;
+varying vec3 vModel;
+varying vec3 vCol;
 void main(void) {
+  vModel = vertex_position;
+  vCol = vertex_color.rgb;
   float code = floor(vertex_color.a * 255.0 + 0.5);
   float cls = floor(code / 32.0);
   float sw = (code - cls * 32.0) / 31.0;
@@ -136,9 +140,13 @@ uniform uTime: f32;
 uniform uSway: f32;
 varying vWorld: vec3f;
 varying vCls: f32;
+varying vModel: vec3f;
+varying vCol: vec3f;
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
+  output.vModel = input.vertex_position;
+  output.vCol = input.vertex_color.rgb;
   let code = floor(input.vertex_color.a * 255.0 + 0.5);
   let cls = floor(code / 32.0);
   let sw = (code - cls * 32.0) / 31.0;
@@ -154,20 +162,42 @@ const SIL_FS_GLSL = `
 uniform float uShade;
 uniform float uGlow;
 uniform float uClsOverride;
+uniform vec4 uClip; // model-space plane: keep where dot(p, n) < w (a car torn in two)
+uniform float uPaint; // 0 = pure silhouette, 1 = muted paint (cars and their kit)
 varying vec3 vWorld;
 varying float vCls;
+varying vec3 vModel;
+varying vec3 vCol;
 ${HASH_GLSL}
 ${SKY_GLSL}
 ${LIGHTS_GLSL}
 void main(void) {
+  if (dot(vModel, uClip.xyz) + (hash12(floor(vModel.yx * 9.0)) - 0.5) * 0.3 * step(0.001, dot(uClip.xyz, uClip.xyz)) > uClip.w) discard;
   vec2 uv = gl_FragCoord.xy / uRes;
   float depth = max(0.0, -vWorld.z);
   float fogK = 1.0 - exp(-depth / 24.0);
   // the fog walls at both ends of the glade
   fogK = max(fogK, smoothstep(uWorldW - 26.0, uWorldW + 2.0, abs(vWorld.x)) * 0.96);
   vec3 base = vec3(0.016, 0.017, 0.017) * uShade;
+  vec3 tint = vec3(1.0);
+  if (uPaint > 0.0) {
+    // muted paint, lit only by the foggy sky from above, with grime, scratches and chipped edges
+    vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+    if (n.z < 0.0) n = -n;
+    vec3 alb = vCol;
+    alb = mix(vec3(dot(alb, vec3(0.3, 0.59, 0.11))), alb, 0.78);
+    float blot = vnoise(vModel.xy * 6.0 + vModel.z * 4.3);
+    float scratch = vnoise(vec2(vModel.x * 2.5 + vModel.z * 1.7, vModel.y * 24.0));
+    alb *= 0.74 + 0.34 * blot;
+    alb = mix(alb, alb * 1.4 + 0.035, smoothstep(0.76, 0.86, scratch) * 0.55);
+    alb *= mix(0.62, 1.0, smoothstep(-0.55, 0.25, vModel.y));
+    float light = 0.4 + 0.6 * clamp(n.y * 0.7 + 0.45, 0.0, 1.0);
+    vec3 lit = alb * (sky(uv) * 1.3 + 0.05) * light;
+    base = mix(base, lit, uPaint);
+    tint = mix(vec3(1.0), 0.45 + alb * 1.6, uPaint);
+  }
   vec3 c = mix(base, sky(uv) * 0.94, fogK * 0.93);
-  c += allLights(vWorld) * (0.1 + 0.25 * (1.0 - fogK));
+  c += allLights(vWorld) * (0.1 + 0.25 * (1.0 - fogK)) * tint;
   if (vCls > 6.5) c = mix(c, vec3(1.0, 0.64, 0.28) * uGlow, 1.0 - fogK); // lamps, barrel bands, crate edges
   float cls = uClsOverride > 0.0 ? uClsOverride : vCls;
   float sub = floor(clamp(fogK, 0.0, 1.0) * 31.0);
@@ -177,22 +207,47 @@ const SIL_FS_WGSL = `
 uniform uShade: f32;
 uniform uGlow: f32;
 uniform uClsOverride: f32;
+uniform uClip: vec4f;
+uniform uPaint: f32;
 varying vWorld: vec3f;
 varying vCls: f32;
+varying vModel: vec3f;
+varying vCol: vec3f;
 ${HASH_WGSL}
 ${SKY_WGSL}
 ${LIGHTS_WGSL}
 @fragment
 fn fragmentMain(input: FragmentInput) -> FragmentOutput {
   var output: FragmentOutput;
+  let on = step(0.001, dot(uniform.uClip.xyz, uniform.uClip.xyz));
+  if (dot(input.vModel, uniform.uClip.xyz) + (hash12(floor(input.vModel.yx * 9.0)) - 0.5) * 0.3 * on > uniform.uClip.w) { discard; }
   let uv = input.position.xy / uniform.uRes;
   let uvf = vec2f(uv.x, 1.0 - uv.y);
   let depth = max(0.0, -input.vWorld.z);
   var fogK = 1.0 - exp(-depth / 24.0);
   fogK = max(fogK, smoothstep(uniform.uWorldW - 26.0, uniform.uWorldW + 2.0, abs(input.vWorld.x)) * 0.96);
-  let base = vec3f(0.016, 0.017, 0.017) * uniform.uShade;
+  var base = vec3f(0.016, 0.017, 0.017) * uniform.uShade;
+  var tint = vec3f(1.0);
+  let dx = dpdx(input.vWorld);
+  let dy = dpdy(input.vWorld);
+  if (uniform.uPaint > 0.0) {
+    var n = normalize(cross(dx, dy));
+    if (n.z < 0.0) { n = -n; }
+    let m = input.vModel;
+    var alb = input.vCol;
+    alb = mix(vec3f(dot(alb, vec3f(0.3, 0.59, 0.11))), alb, 0.78);
+    let blot = vnoise(m.xy * 6.0 + vec2f(m.z * 4.3));
+    let scratch = vnoise(vec2f(m.x * 2.5 + m.z * 1.7, m.y * 24.0));
+    alb = alb * (0.74 + 0.34 * blot);
+    alb = mix(alb, alb * 1.4 + vec3f(0.035), smoothstep(0.76, 0.86, scratch) * 0.55);
+    alb = alb * mix(0.62, 1.0, smoothstep(-0.55, 0.25, m.y));
+    let light = 0.4 + 0.6 * clamp(n.y * 0.7 + 0.45, 0.0, 1.0);
+    let lit = alb * (sky(uvf) * 1.3 + vec3f(0.05)) * light;
+    base = mix(base, lit, uniform.uPaint);
+    tint = mix(vec3f(1.0), vec3f(0.45) + alb * 1.6, uniform.uPaint);
+  }
   var c = mix(base, sky(uvf) * 0.94, fogK * 0.93);
-  c = c + allLights(input.vWorld) * (0.1 + 0.25 * (1.0 - fogK));
+  c = c + allLights(input.vWorld) * (0.1 + 0.25 * (1.0 - fogK)) * tint;
   if (input.vCls > 6.5) { c = mix(c, vec3f(1.0, 0.64, 0.28) * uniform.uGlow, 1.0 - fogK); }
   var cls = input.vCls;
   if (uniform.uClsOverride > 0.0) { cls = uniform.uClsOverride; }
@@ -393,12 +448,14 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
 const ATTR_PC = { vertex_position: pc.SEMANTIC_POSITION, vertex_color: pc.SEMANTIC_COLOR };
 const keepAlpha = (src, dst) => new pc.BlendState(true, pc.BLENDEQUATION_ADD, src, dst, pc.BLENDEQUATION_ADD, pc.BLENDMODE_ZERO, pc.BLENDMODE_ONE);
 
-export function silMaterial({ sway = 0, shade = 1, cls = 0, glow = 0.9, doubleSided = true } = {}) {
+export function silMaterial({ sway = 0, shade = 1, cls = 0, glow = 0.9, doubleSided = true, clip = null, paint = 0 } = {}) {
   const mat = new pc.ShaderMaterial({ uniqueName: 'sil', vertexGLSL: SIL_VS_GLSL, fragmentGLSL: SIL_FS_GLSL, vertexWGSL: SIL_VS_WGSL, fragmentWGSL: SIL_FS_WGSL, attributes: ATTR_PC });
   mat.setParameter('uSway', sway);
   mat.setParameter('uShade', shade);
   mat.setParameter('uClsOverride', cls);
   mat.setParameter('uGlow', glow);
+  mat.setParameter('uClip', new Float32Array(clip || [0, 0, 0, 1]));
+  mat.setParameter('uPaint', paint);
   mat.cull = doubleSided ? pc.CULLFACE_NONE : pc.CULLFACE_BACK;
   mat.update();
   return mat;

@@ -36,6 +36,8 @@ export class Body {
     this.ws = shapes.map(() => [0, 0]);
     this.noBodyCollide = false;
     this.tuck = 0;
+    this.pin = null; // { x, y, limit, rest, k }: pinned at its centre (a see-saw)
+    this.oneWay = false; // collides only with things above it
   }
 
   set(x, y, a = this.a) { this.p[0] = x; this.p[1] = y; this.a = a; this.updateShapes(); return this; }
@@ -73,24 +75,34 @@ export class Statics {
     return o;
   }
   query(x) { return this.map.get(Math.floor(x / this.cell)); }
+  remove(o) {
+    for (let i = Math.floor((o.x - o.r) / this.cell); i <= Math.floor((o.x + o.r) / this.cell); i++) {
+      const l = this.map.get(i);
+      if (!l) continue;
+      const k = l.indexOf(o);
+      if (k >= 0) l.splice(k, 1);
+      if (!l.length) this.map.delete(i);
+    }
+    const k = this.all.indexOf(o);
+    if (k >= 0) this.all.splice(k, 1);
+  }
 }
 
 const _va = [0, 0], _vb = [0, 0];
 
 export class Physics {
-  constructor(terrain, { halfW, waterY, pond }) {
+  constructor(terrain) {
     this.terrain = terrain;
     this.statics = new Statics();
-    this.halfW = halfW;
-    this.waterY = waterY;
-    this.pond = pond;
     this.bodies = [];
     this.hooks = []; // fn(h) per substep: car suspension etc.
   }
   add(b) { this.bodies.push(b); b.updateShapes(); return b; }
   remove(b) { const i = this.bodies.indexOf(b); if (i >= 0) this.bodies.splice(i, 1); }
 
-  inWater(x, y) { return x > this.pond.x0 && x < this.pond.x1 && y < this.waterY; }
+  /** the water surface over x when (x, y) is under it, else null */
+  waterAbove(x, y) { const w = this.terrain.water(x); return w !== null && y < w ? w : null; }
+  inWater(x, y) { return this.waterAbove(x, y) !== null; }
 
   step(dt) {
     if (!(dt > 1e-5)) return; // paused / duplicate frame: a zero step would divide by zero
@@ -102,8 +114,9 @@ export class Physics {
         if (!b.enabled || b.kinematic) { b.f[0] = b.f[1] = b.t = 0; continue; }
         let gy = G;
         // water: buoyancy + drag
-        if (this.inWater(b.p[0], b.p[1])) {
-          const depth = Math.min(1.5, this.waterY - b.p[1]);
+        const wy = this.waterAbove(b.p[0], b.p[1]);
+        if (wy !== null) {
+          const depth = Math.min(1.5, wy - b.p[1]);
           gy += -G * b.buoyant * (0.6 + depth * 0.5);
           b.v[0] *= 1 - h * 1.6; b.v[1] *= 1 - h * 2.2; b.w *= 1 - h * 2;
         }
@@ -114,15 +127,12 @@ export class Physics {
         const ld = Math.exp(-b.linDamp * h), ad = Math.exp(-b.angDamp * h);
         b.v[0] *= ld; b.v[1] *= ld; b.w *= ad;
         b.p[0] += b.v[0] * h; b.p[1] += b.v[1] * h; b.a += b.w * h;
-        // fog walls
-        const W = this.halfW - 1;
-        if (b.p[0] > W) { b.p[0] = W; if (b.v[0] > 0) b.v[0] *= -0.4; }
-        if (b.p[0] < -W) { b.p[0] = -W; if (b.v[0] < 0) b.v[0] *= -0.4; }
         b.updateShapes();
       }
       for (const b of bodies) if (b.enabled && b.kinematic) b.updateShapes();
       for (const b of bodies) if (b.enabled && !b.kinematic) this.collideWorld(b);
       this.collideBodies();
+      for (const b of bodies) if (b.pin && b.enabled && !b.kinematic) this.applyPin(b);
     }
     // props at rest stay at rest: bleed off the solver's leftover jitter (also keeps the host
     // from re-broadcasting barrels that are only trembling)
@@ -139,7 +149,7 @@ export class Physics {
       // terrain (cars tuck their colliders in a little: the wheels carry them, not the belly)
       const rt = r - b.tuck;
       const g = this.terrain.height(c[0]);
-      if (c[1] - rt < g + 0.5) {
+      if (b.shapes[i][3] !== 1 && c[1] - rt < g + 0.5) { // shapes flagged 1 (big tires) leave the ground to the springs
         const n = this.terrain.normal(c[0], _va);
         const pen = rt - (c[1] - g) * n[1];
         if (pen > 0) { this.resolve(b, null, c[0] - n[0] * rt, c[1] - n[1] * rt, n[0], n[1], pen); b.grounded = 3; }
@@ -174,6 +184,11 @@ export class Physics {
             const dx = ca[0] - cb[0], dy = ca[1] - cb[1], d = Math.hypot(dx, dy);
             if (d >= R || d < 1e-6) continue;
             const nx = dx / d, ny = dy / d;
+            // one-way platforms (the see-saw) only push things that are on top of them
+            if (a.oneWay || b.oneWay) {
+              const P = a.oneWay ? a : b, s = a.oneWay ? -1 : 1; // normal from the platform to the other body
+              if ((nx * -Math.sin(P.a) + ny * Math.cos(P.a)) * s < 0.5) continue;
+            }
             this.resolve(a, b, cb[0] + nx * b.shapes[sj][2], cb[1] + ny * b.shapes[sj][2], nx, ny, R - d);
           }
         }
@@ -184,13 +199,16 @@ export class Physics {
   /** Contact between a and b (b = null: the world). Normal points from b to a. */
   resolve(a, b, px, py, nx, ny, pen) {
     const aDyn = !a.kinematic, bDyn = b && !b.kinematic;
-    const ima = aDyn ? a.im : 0, imb = bDyn ? b.im : 0;
+    // a pinned body (the see-saw plank) can only turn: no linear mass in the contact
+    const ima = aDyn && !a.pin ? a.im : 0, imb = bDyn && !b.pin ? b.im : 0;
     const iia = aDyn ? a.iI : 0, iib = bDyn ? b.iI : 0;
-    if (ima + imb <= 0) return;
+    if (ima + imb + iia + iib <= 0) return;
     // positional correction
-    const k = Math.max(0, pen - 0.005) * 0.85 / (ima + imb);
-    if (aDyn) { a.p[0] += nx * k * ima; a.p[1] += ny * k * ima; a.updateShapes(); }
-    if (bDyn) { b.p[0] -= nx * k * imb; b.p[1] -= ny * k * imb; b.updateShapes(); }
+    if (ima + imb > 0) {
+      const k = Math.max(0, pen - 0.005) * 0.85 / (ima + imb);
+      if (ima) { a.p[0] += nx * k * ima; a.p[1] += ny * k * ima; a.updateShapes(); }
+      if (imb) { b.p[0] -= nx * k * imb; b.p[1] -= ny * k * imb; b.updateShapes(); }
+    }
     const rax = px - a.p[0], ray = py - a.p[1];
     const rbx = b ? px - b.p[0] : 0, rby = b ? py - b.p[1] : 0;
     a.pointVel(rax, ray, _va);
@@ -200,6 +218,7 @@ export class Physics {
     if (vn >= 0) return;
     const ran = cross(rax, ray, nx, ny), rbn = cross(rbx, rby, nx, ny);
     const kn = ima + imb + ran * ran * iia + rbn * rbn * iib;
+    if (kn <= 1e-9) return;
     const e = vn < -2 ? Math.max(a.restitution, b ? b.restitution : 0.15) : 0;
     const j = -(1 + e) * vn / kn;
     // friction
@@ -208,7 +227,7 @@ export class Physics {
     const rat = cross(rax, ray, tx, ty), rbt = cross(rbx, rby, tx, ty);
     const kt = ima + imb + rat * rat * iia + rbt * rbt * iib;
     const mu = b ? (a.friction + b.friction) * 0.5 : a.friction;
-    const jt = Math.max(-mu * j, Math.min(mu * j, -vt / kt));
+    const jt = kt > 1e-9 ? Math.max(-mu * j, Math.min(mu * j, -vt / kt)) : 0;
     const jx = nx * j + tx * jt, jy = ny * j + ty * jt;
     if (aDyn) a.applyImpulse(jx, jy, rax, ray);
     if (bDyn) b.applyImpulse(-jx, -jy, rbx, rby);
@@ -218,6 +237,18 @@ export class Physics {
     if (speed > a.lastImpact) { a.lastImpact = speed; a.lastHitBy = b; }
     if (b && speed > b.lastImpact) { b.lastImpact = speed; b.lastHitBy = a; }
     if (speed > 1.5) { if (a.onContact) a.onContact(b, speed); if (b && b.onContact) b.onContact(a, speed); }
+  }
+
+  /** a body pinned at its centre (the teeter-totter plank): hold the pivot, limit the tilt */
+  applyPin(b) {
+    const P = b.pin;
+    b.p[0] = P.x; b.p[1] = P.y; b.v[0] = 0; b.v[1] = 0;
+    if (P.k) b.w += (P.rest - b.a) * P.k; // a counterweight pulling it back to rest
+    if (P.limit) {
+      if (b.a > P.limit) { b.a = P.limit; if (b.w > 0) b.w *= -0.2; }
+      if (b.a < -P.limit) { b.a = -P.limit; if (b.w < 0) b.w *= -0.2; }
+    }
+    b.updateShapes();
   }
 
   /** Radial blast (explosions, the shockwave horn). filter(body) -> bool */

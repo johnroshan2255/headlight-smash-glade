@@ -14,7 +14,7 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   await sleep(900);
   await p.screenshot({ path: `${SHOTS}menu-${tag}.png` });
   const visible = await p.evaluate(() => [...document.querySelectorAll('#boot button, #boot input, #boot select')].filter((e) => e.offsetParent).map((e) => e.id));
-  ok(visible.join() === 'btnPlay,btnCoop', `${tag}: only PLAY and CO-OP on the menu (${visible.join()})`);
+  ok(visible.join() === 'btnPlay,btnCoop,btnGarage', `${tag}: just PLAY, CO-OP and GARAGE on the menu (${visible.join()})`);
   await p.click('#btnCoop');
   await sleep(3800);
   await p.screenshot({ path: `${SHOTS}lobby-${tag}.png` });
@@ -25,9 +25,10 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   if (tag === 'desk') {
     await p.click('#glades button[data-code="FROG"]');
     ok((await p.inputValue('#optRoom')) === 'FROG' && (await p.textContent('#btnJoin')) === 'JOIN FROG', 'clicking a glade fills the code');
-    await p.click('#btnNewCode');
-    const code = await p.inputValue('#optRoom');
-    ok(/^[A-Z0-9]{4}$/.test(code), `NEW makes a private code (${code})`);
+    await p.click('#lTabCreate'); await sleep(200);
+    const code = (await p.textContent('#newCode')).trim();
+    ok(/^[A-Z0-9]{4}$/.test(code), `CREATE ROOM makes a private code (${code})`);
+    await p.click('#lTabJoin'); await sleep(200);
     await p.click('#btnBack');
     ok(await p.isVisible('#btnPlay'), 'BACK returns to the menu');
     await p.click('#btnCoop');
@@ -37,13 +38,15 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
     await sleep(2500);
     const s = await p.evaluate(() => ({ online: window.__hsg.net.online, code: window.__hsg.net.code, cars: [...window.__hsg.cars.values()].map((c) => c.name) }));
     ok(s.online && s.code === 'FROG' && s.cars.includes('Frog'), `JOIN puts you in FROG with Frog (${JSON.stringify(s)})`);
-    // in-game ride swap
+    // the garage from in-game settings: swap the ride mid-drive
     await p.keyboard.press('Escape');
-    await p.selectOption('#optRide', 'monster');
-    await sleep(1500);
+    await p.click('#btnGarageIn'); await sleep(600);
+    await p.click('#gItems .g-card[data-id="monster"]'); await sleep(300);
+    await p.click('#gAction'); await sleep(700);
+    await p.click('#gBack'); await sleep(1500);
     const v = await p.evaluate(() => window.__hsg.me.vehicle);
     const vOnHost = await host.page.evaluate((id) => window.__hsg.cars.get(id)?.vehicle, await p.evaluate(() => window.__hsg.me.id));
-    ok(v === 'monster' && vOnHost === 'monster', `settings ride swap works and the host sees it (${v}, host sees ${vOnHost})`);
+    ok(v === 'monster' && vOnHost === 'monster', `in-game garage swaps the ride and the host sees it (${v}, host sees ${vOnHost})`);
   }
   if (tag === 'phone') {
     await p.click('#btnBack');

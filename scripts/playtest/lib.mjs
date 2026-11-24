@@ -27,6 +27,7 @@ export async function open(browser, { query = 'autostart&mode=solo&veh=mudrunner
   const ctx = await browser.newContext({ viewport, ...context });
   const page = await ctx.newPage();
   const errors = [];
+  page.on('crash', () => errors.push('PAGE CRASHED'));
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
   await page.goto(`${BASE}/?${query}`);
@@ -46,4 +47,4 @@ export const state = (page) => page.evaluate(() => {
 });
 
 /** Clear the glade of props (barrels, trees, cage-ball, boulders, crates) for clean handling trials. */
-export const emptyGlade = (page) => page.evaluate(() => { const S = window.__hsg.sandbox; for (const B of S.barrels) { B.alive = false; B.respawn = 1e9; B.body.enabled = false; } for (const T of S.trees) { S.hideTree(T); T.respawn = 1e9; } S.ball.alive = false; S.ball.respawn = 1e9; S.ball.body.enabled = false; for (const sl of S.slides) { sl.released = true; sl.respawn = 1e9; for (const R of sl.rocks) R.body.enabled = false; } for (const C of S.crates) { C.alive = false; C.respawn = 1e9; } });
+export const emptyGlade = (page) => page.evaluate(() => { const S = window.__hsg.sandbox; S.chunkT = 1e9; for (const B of S.barrels) { B.alive = false; B.respawn = 1e9; B.body.enabled = false; } for (const T of S.trees.values()) { S.hideTree(T); T.respawn = 1e9; } for (const P of S.balls) { P.alive = false; P.respawn = 1e9; P.body.enabled = false; } for (const sl of S.slides.values()) { sl.released = true; sl.respawn = 1e9; for (const R of sl.rocks) R.body.enabled = false; } for (const C of S.crates.values()) { C.alive = false; C.respawn = 1e9; } });

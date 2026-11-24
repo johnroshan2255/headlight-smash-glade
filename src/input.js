@@ -14,8 +14,8 @@ export class Input {
     this.dragging = false;
     this.keys = new Set();
     this.anyInput = false;
-    this.gadgetPressed = this.hornPressed = this.resetPressed = this.sightPressed = false;
-    this._q = { gadget: false, horn: false, reset: false, sight: false, hop: false };
+    this.gadgetPressed = this.hornPressed = this.resetPressed = this.sightPressed = this.roofPressed = this.bumperPressed = false;
+    this._q = { gadget: false, horn: false, reset: false, sight: false, hop: false, roof: false, bumper: false };
     this._touch = { boost: false, left: false, right: false };
     this._padPrev = [];
     this.stick = { id: -1, ox: 0, oy: 0, x: 0, y: 0 };
@@ -28,7 +28,9 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (typing(e)) return;
       if (!e.repeat) {
-        if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') this._q.gadget = true;
+        if (e.code === 'KeyE' || e.code === 'Enter') this._q.roof = true;
+        if (e.code === 'KeyQ') this._q.bumper = true;
+        if (e.code === 'KeyF') this._q.gadget = true;
         if (e.code === 'Space' || e.code === 'KeyK') this._q.hop = true;
         if (e.code === 'KeyH') this._q.horn = true;
         if (e.code === 'KeyR') this._q.reset = true;
@@ -63,6 +65,8 @@ export class Input {
     hold('btnRight', (d) => { this._touch.right = d; });
     hold('btnHop', (d) => { if (d) this._q.hop = true; });
     hold('btnGadget', (d) => { if (d) this._q.gadget = true; });
+    hold('btnRoof', (d) => { if (d) this._q.roof = true; });
+    hold('btnBumper', (d) => { if (d) this._q.bumper = true; });
     hold('btnHorn', (d) => { if (d) this._q.horn = true; });
     hold('btnFlip', (d) => { if (d) this._q.reset = true; });
   }
@@ -137,9 +141,10 @@ export class Input {
         if (b(15)) dir = 1;
         if ((gp.buttons[7]?.value ?? 0) > 0.3 || b(5)) boost = true;
         if (edge(0)) this._q.hop = true;
-        if (edge(2)) this._q.gadget = true;
+        if (edge(2)) this._q.roof = true;
+        if (edge(1)) this._q.bumper = true;
         if (edge(3)) this._q.horn = true;
-        if (edge(9) || edge(1)) this._q.reset = true;
+        if (edge(9)) this._q.reset = true;
         // if (edge(8)) this._q.sight = true; // ASCII view off
         if (b(4)) flash = true;
         if (b(6)) board = true;
@@ -150,8 +155,8 @@ export class Input {
     }
     this.dir = Math.max(-1, Math.min(1, dir)); this.boost = boost; this.flash = flash; this.board = board;
     this.dragging = this.look.size > 0;
-    this.gadgetPressed = this._q.gadget; this.hornPressed = this._q.horn; this.resetPressed = this._q.reset; this.sightPressed = this._q.sight; this.hopPressed = this._q.hop;
-    this._q.gadget = this._q.horn = this._q.reset = this._q.sight = this._q.hop = false;
+    this.gadgetPressed = this._q.gadget; this.hornPressed = this._q.horn; this.resetPressed = this._q.reset; this.sightPressed = this._q.sight; this.hopPressed = this._q.hop; this.roofPressed = this._q.roof; this.bumperPressed = this._q.bumper;
+    this._q.gadget = this._q.horn = this._q.reset = this._q.sight = this._q.hop = this._q.roof = this._q.bumper = false;
   }
 
   consumeLook() { const v = this.yawDelta; this.yawDelta = 0; return v; }

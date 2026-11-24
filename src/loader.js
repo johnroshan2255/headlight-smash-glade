@@ -1,11 +1,13 @@
 // Tiny entry module: paints the loading screen immediately, then pulls in the engine + game
 // (a separate chunk) and drives the real loading steps with a progress bar.
 // Nothing here imports PlayCanvas, so this file is a few KB and runs before the engine arrives.
+import { setupGarage } from './garage.js';
 
 const $ = (id) => document.getElementById(id);
 // colour or monochrome title card, matching the player's saved choice
 const ls = { get(k, d) { try { return localStorage.getItem(`hsg.${k}`) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(`hsg.${k}`, v); } catch { /* */ } } };
 if (ls.get('palette', 'color') === 'mono') document.body.classList.add('mono');
+const resetScroll = (e) => { if (e.scrollLeft || e.scrollTop) { e.scrollLeft = 0; e.scrollTop = 0; } };
 const els = {
   boot: $('boot'), bar: $('loadFill'), pct: $('loadPct'), stage: $('stageText'), spin: $('spin'), grain: document.querySelector('#boot .grain'),
   play: $('btnPlay'), retry: $('btnRetry'), menu: $('menu'), lobby: $('lobby'), tip: $('tip'), progress: $('loadProgress'),
@@ -72,6 +74,7 @@ function render(now) {
   if (els.boot.isConnected) requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
+els.boot.addEventListener('scroll', () => resetScroll(els.boot)); // older browsers without overflow: clip
 
 let tipI = 0;
 const tipTimer = setInterval(() => {
@@ -154,40 +157,48 @@ async function boot() {
   els.boot.classList.add('ready');
   els.menu.hidden = false;
   els.play.focus({ preventScroll: true });
+  // why we're back here (the host left the room, the connection dropped)
+  try { const n = sessionStorage.getItem('hsg.notice'); if (n) { sessionStorage.removeItem('hsg.notice'); els.tip.textContent = n; els.tip.classList.add('notice'); } } catch { /* */ }
 
-  // ---------------------------------------------------------------- the lobby's ride / hat / name
-  const vehicles = game.vehicles;
-  let vi = Math.max(0, vehicles.findIndex((v) => v.id === ls.get('vehicle', 'mudrunner')));
-  const bar = (label, v) => `<span>${label}</span><i style="--v:${Math.round(Math.min(1, v) * 100)}%"></i>`;
-  const showVeh = () => {
-    const v = vehicles[vi];
-    $('vehName').textContent = v.name.toUpperCase();
-    $('vehBlurb').textContent = v.blurb;
-    $('vehStats').innerHTML = bar('SPEED', v.speed) + bar('WEIGHT', v.weight) + bar('GRIP', v.grip);
-    ls.set('vehicle', v.id);
-  };
-  $('vehPrev').onclick = () => { vi = (vi + vehicles.length - 1) % vehicles.length; showVeh(); };
-  $('vehNext').onclick = () => { vi = (vi + 1) % vehicles.length; showVeh(); };
-  const nameEl = $('optName'), hatEl = $('optHat'), roomEl = $('optRoom');
-  nameEl.value = ls.get('name', `Driver${Math.floor(100 + Math.random() * 900)}`);
-  const hats = game.hats();
-  hatEl.innerHTML = hats.map((h) => `<option value="${h.id}">${h.name}</option>`).join('');
-  hatEl.value = hats.some((h) => h.id === ls.get('hat', 'straw')) ? ls.get('hat', 'straw') : 'straw';
+  // ---------------------------------------------------------------- account chip, garage, lobby name
+  const G = setupGarage(game, {
+    onClose: (inGame) => { if (!inGame) { els.boot.classList.remove('away'); $('lobbyRide').textContent = G.rideName().toUpperCase(); (els.lobby.hidden ? els.play : $('btnJoin')).focus({ preventScroll: true }); } },
+  });
+  $('acctChip').hidden = false;
+  const openGarage = () => { els.boot.classList.add('away'); G.openGarage(false); };
+  $('btnGarage').addEventListener('click', openGarage);
+  $('lobbyRide').addEventListener('click', openGarage);
+  $('lobbyRide').textContent = G.rideName().toUpperCase();
+  const nameEl = $('optName'), roomEl = $('optRoom');
   const q = new URLSearchParams(location.search);
+  nameEl.value = game.account.name || ls.get('name', `Driver${Math.floor(100 + Math.random() * 900)}`);
+  window.addEventListener('hsg:account', () => { if (game.account.name) nameEl.value = game.account.name; $('lobbyRide').textContent = G.rideName().toUpperCase(); });
   roomEl.value = (q.get('room') || ls.get('room', '')).toUpperCase();
-  if (q.get('veh')) vi = Math.max(0, vehicles.findIndex((v) => v.id === q.get('veh')));
   if (q.get('name')) nameEl.value = q.get('name');
-  showVeh();
 
   // ---------------------------------------------------------------- open glades on this server
   const gladesEl = $('glades');
   let pollTimer = 0;
   const pickRoom = (code) => { roomEl.value = code; syncRoom(); };
+  // two ways in: JOIN (a code or an open glade) or CREATE a private room of your own
+  let lobbyMode = 'join', newBots = 0;
   const syncRoom = () => {
     roomEl.value = roomEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     for (const b of gladesEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.code === roomEl.value);
-    $('btnJoin').textContent = roomEl.value ? `JOIN ${roomEl.value}` : 'JOIN THE GLADE';
+    $('btnJoin').textContent = lobbyMode === 'create' ? `CREATE ${$('newCode').textContent} & DRIVE` : roomEl.value ? `JOIN ${roomEl.value}` : 'JOIN THE GLADE';
   };
+  const freshCode = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; $('newCode').textContent = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join(''); syncRoom(); };
+  const setLobbyMode = (m) => {
+    lobbyMode = m;
+    $('lTabJoin').classList.toggle('on', m === 'join'); $('lTabCreate').classList.toggle('on', m === 'create');
+    $('lJoin').hidden = m !== 'join'; $('lCreate').hidden = m !== 'create';
+    if (m === 'create' && $('newCode').textContent.includes('-')) freshCode();
+    syncRoom();
+  };
+  $('lTabJoin').onclick = () => setLobbyMode('join');
+  $('lTabCreate').onclick = () => setLobbyMode('create');
+  for (const b of $('botChips').querySelectorAll('button')) b.onclick = () => { newBots = Number(b.dataset.b); for (const o of $('botChips').querySelectorAll('button')) o.classList.toggle('on', o === b); };
+  $('btnCopyCode').onclick = async () => { try { await navigator.clipboard.writeText($('newCode').textContent); $('btnCopyCode').textContent = 'COPIED'; setTimeout(() => ($('btnCopyCode').textContent = 'COPY'), 1500); } catch { /* no clipboard */ } };
   async function pollRooms() {
     let list = null;
     try { const r = await fetch('/rooms', { cache: 'no-store' }); if (r.ok) list = await r.json(); } catch { /* offline */ }
@@ -202,11 +213,7 @@ async function boot() {
     syncRoom();
   }
   roomEl.addEventListener('input', syncRoom);
-  $('btnNewCode').onclick = () => {
-    const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    pickRoom(Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join(''));
-    $('roomHint').textContent = 'A private room. Tell your friends this code.';
-  };
+  $('btnNewCode').onclick = freshCode;
 
   const showLobby = (open) => {
     els.menu.hidden = open;
@@ -238,20 +245,23 @@ async function boot() {
     begun = true;
     if (e) e.preventDefault();
     clearInterval(pollTimer);
-    const name = nameEl.value.trim().replace(/[<>&]/g, '') || 'Driver';
+    const name = nameEl.value.trim().replace(/[<>&]/g, '') || game.account.name || 'Driver';
     ls.set('name', name);
-    ls.set('hat', hatEl.value);
-    ls.set('room', roomEl.value);
-    game.begin(e, { vehicle: vehicles[vi].id, name, hat: hatEl.value, mode, code: roomEl.value }); // the gesture lets us go fullscreen
+    const create = mode === 'online' && lobbyMode === 'create';
+    const code = create ? $('newCode').textContent : roomEl.value;
+    ls.set('room', code);
+    $('acctChip').hidden = true;
+    // a new room is made with the creator's settings; joining an existing one keeps its own
+    game.begin(e, { name, mode, code, private: create && $('optHide').checked, bots: create ? newBots : -1 }); // the gesture lets us go fullscreen
     els.boot.classList.add('fade');
     setTimeout(() => els.boot.remove(), 650);
     window.removeEventListener('keydown', keys);
   };
   const keys = (e) => {
+    if (!$('garageUI').hidden || !$('acctUI').hidden) return;
     const inLobby = !els.lobby.hidden;
     if (e.code === 'Escape' && inLobby) { showLobby(false); return; }
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) { if (e.code === 'Enter' && inLobby && !$('btnJoin').disabled) begin(e, 'online'); return; }
-    if (inLobby && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !(document.activeElement instanceof HTMLButtonElement && document.activeElement.closest('.glades'))) $(e.code === 'ArrowLeft' ? 'vehPrev' : 'vehNext').click();
   };
   // click (not pointerdown): on touch screens only the release counts as a user activation
   els.play.addEventListener('click', (e) => begin(e, 'solo'));
