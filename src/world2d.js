@@ -71,7 +71,7 @@ export class World2D {
       stone: silMaterial({ cls: CLS.STONE }),
       sky: skyMaterial(),
       water: tintMaterial(),
-      waterLine: glowMaterial(0.5),
+      waterLine: glowMaterial(0.8),
     };
     this.fogMats = [];
     this.fogEnts = [];
@@ -239,22 +239,23 @@ export class World2D {
   }
 
   buildWater(S, C) {
+    // the pond: a dark teal body (lighter just under the surface, near-black at the bottom) and a
+    // bright rippling surface line, so it reads as water against the misty background
     const P = S.pond, N = 64;
-    const W = { x0: P.x0 - 2, x1: P.x1 + 2, y: P.waterY, N, pos: new Float32Array((N + 1) * 2 * 3), line: new Float32Array((N + 1) * 2 * 3) };
-    const mk = (alpha, mat, h) => {
-      const mesh = new pc.Mesh(this.device);
-      const cols = [], idx = [];
-      for (let i = 0; i <= N; i++) { cols.push(122, 142, 140, alpha, 92, 110, 108, h ? 0 : alpha * 0.6); } // fog-grey water, darker deeper down
-      for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
-      mesh.setPositions(new Float32Array((N + 1) * 2 * 3));
+    const W = { x0: P.x0 - 2, x1: P.x1 + 2, y: P.waterY, N, pos: new Float32Array((N + 1) * 3 * 3), line: new Float32Array((N + 1) * 2 * 3) };
+    const aabb = new pc.BoundingBox(new pc.Vec3((P.x0 + P.x1) / 2, P.waterY - 2, 1), new pc.Vec3((P.x1 - P.x0) / 2 + 3, 6, 1));
+    const strip = (rows, colours, mat) => {
+      const mesh = new pc.Mesh(this.device), cols = [], idx = [];
+      for (let i = 0; i <= N; i++) for (const c of colours) cols.push(...c);
+      for (let i = 0; i < N; i++) for (let r = 0; r < rows - 1; r++) { const a = i * rows + r, b = a + rows; idx.push(a, a + 1, b + 1, a, b + 1, b); }
+      mesh.setPositions(new Float32Array((N + 1) * rows * 3));
       mesh.setColors32(cols);
       mesh.setIndices(idx);
       mesh.update(pc.PRIMITIVE_TRIANGLES);
-      const aabb = new pc.BoundingBox(new pc.Vec3((P.x0 + P.x1) / 2, P.waterY - 2, 1), new pc.Vec3((P.x1 - P.x0) / 2 + 3, 6, 1));
       return { mesh, e: this.addEntity('water', mesh, mat, { aabb, owner: C }) };
     };
-    W.body = mk(105, this.mats.water, false);
-    W.glint = mk(200, this.mats.waterLine, true);
+    W.body = strip(3, [[86, 128, 130, 175], [44, 76, 82, 205], [14, 26, 30, 235]], this.mats.water);
+    W.glint = strip(2, [[205, 228, 222, 230], [150, 190, 190, 0]], this.mats.waterLine);
     C.waters.push(W);
     this.paintWater(W, []);
   }
@@ -269,9 +270,9 @@ export class World2D {
       const x = W.x0 + (W.x1 - W.x0) * (i / W.N);
       let y = W.y + Math.sin(x * 1.3 + t * 2.1) * 0.05 + Math.sin(x * 0.7 - t * 1.3) * 0.04;
       for (const g of gushes) if (Math.abs(g.x - x) < 4) y += g.k * Math.exp(-((x - g.x) ** 2) / 1.5);
-      const bot = Math.min(y, this.terrain.height(x)) - 0.02;
-      W.pos.set([x, y, 1.0, x, Math.min(bot, y), 1.0], i * 6);
-      W.line.set([x, y + 0.04, 1.02, x, y - 0.05, 1.02], i * 6);
+      const bot = Math.min(y, this.terrain.height(x)) - 0.02, mid = Math.max(bot, y - 0.7);
+      W.pos.set([x, y, 1.0, x, mid, 1.0, x, Math.min(bot, mid), 1.0], i * 9);
+      W.line.set([x, y + 0.05, 1.02, x, y - 0.09, 1.02], i * 6);
     }
     W.body.mesh.setPositions(W.pos); W.body.mesh.update(pc.PRIMITIVE_TRIANGLES, false);
     W.glint.mesh.setPositions(W.line); W.glint.mesh.update(pc.PRIMITIVE_TRIANGLES, false);
