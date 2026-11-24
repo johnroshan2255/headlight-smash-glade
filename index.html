@@ -66,6 +66,8 @@
   <div id="settings" hidden>
     <div class="panel">
       <h2>Settings</h2>
+      <label>Ride <select id="optRide"></select></label>
+      <label>Hat <select id="optHatIn"></select></label>
       <label>Quality
         <select id="optQuality">
           <option value="auto">Auto (adaptive)</option>
@@ -168,32 +170,54 @@
       </div>
       <p id="bootMsg"><span id="stageText">loading</span> <span id="loadPct">0%</span></p>
 
-      <!-- garage: shown when everything is ready -->
-      <div id="garage" hidden>
-        <div class="pick">
-          <button class="arrow" id="vehPrev" aria-label="Previous vehicle">&lt;</button>
-          <div class="card">
-            <div id="vehName">MUDRUNNER</div>
-            <div id="vehBlurb"></div>
-            <pre id="vehStats"></pre>
+      <!-- main menu: shown when everything is ready -->
+      <nav id="menu" hidden>
+        <button id="btnPlay" class="mbtn go">PLAY</button>
+        <button id="btnCoop" class="mbtn">CO-OP</button>
+      </nav>
+
+      <!-- co-op lobby -->
+      <section id="lobby" hidden aria-label="Co-op lobby">
+        <header class="lobby-head">
+          <button id="btnBack" class="back" aria-label="Back to the menu">&#8249; BACK</button>
+          <h2>CO-OP</h2>
+          <span class="lobby-net" id="lobbyNet"></span>
+        </header>
+
+        <div class="lobby-body">
+          <div class="lobby-col">
+            <label class="lbl" for="optRoom">ROOM CODE</label>
+            <div class="code-row">
+              <input id="optRoom" maxlength="8" placeholder="PUBLIC" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+              <button id="btnNewCode" class="ghost" title="Make a private room">NEW</button>
+            </div>
+            <p class="hint" id="roomHint">Leave it empty for the public glade, or share a code with friends.</p>
+            <div class="glades" id="glades" aria-live="polite"></div>
           </div>
-          <button class="arrow" id="vehNext" aria-label="Next vehicle">&gt;</button>
+
+          <div class="lobby-col">
+            <label class="lbl" for="optName">NAME</label>
+            <input id="optName" class="field" maxlength="16" autocomplete="off" spellcheck="false" />
+            <span class="lbl">RIDE</span>
+            <div class="ride">
+              <button class="arrow" id="vehPrev" aria-label="Previous ride">&#8249;</button>
+              <div class="ride-card">
+                <div id="vehName">MUDRUNNER</div>
+                <div id="vehBlurb"></div>
+                <div class="bars" id="vehStats"></div>
+              </div>
+              <button class="arrow" id="vehNext" aria-label="Next ride">&#8250;</button>
+            </div>
+            <label class="lbl" for="optHat">HAT</label>
+            <select id="optHat" class="field"></select>
+          </div>
         </div>
-        <div class="fields">
-          <label>NAME <input id="optName" maxlength="16" autocomplete="off" spellcheck="false" /></label>
-          <label>HAT <select id="optHat"></select></label>
-        </div>
-        <div class="modes">
-          <button id="btnPlay" class="go">DRIVE</button>
-          <button id="btnSolo" class="alt">SOLO WITH BOTS</button>
-        </div>
-        <div class="fields room" id="roomRow">
-          <label>ROOM <input id="optRoom" maxlength="8" placeholder="public" autocomplete="off" spellcheck="false" /></label>
-        </div>
-      </div>
+
+        <button id="btnJoin" class="mbtn go wide">JOIN THE GLADE</button>
+      </section>
+
       <button id="btnRetry" hidden>RETRY</button>
       <p class="sub" id="tip">Up to 8 drivers. No timers. Just smash.</p>
-      <p class="foot" id="bootInfo"></p>
       <noscript><p>Headlight: Smash Glade needs JavaScript.</p></noscript>
     </div>
   </div>

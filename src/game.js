@@ -382,7 +382,31 @@ export async function startGame(loader) {
   // $('optGlyph').value = glyph; // ASCII view off
   $('optRenderer').value = store.get('renderer', 'auto');
   let paused = false;
-  const openSettings = (open) => { $('settings').hidden = !open; paused = open && !net.online; };
+  const openSettings = (open) => {
+    $('settings').hidden = !open;
+    paused = open && !net.online;
+    if (open && me) { // the ride and hat pickers, with every hat found so far
+      $('optRide').value = me.vehicle;
+      const owned = ['straw', ...[...sandbox.ownedHats].filter((h) => h !== 'straw')];
+      $('optHatIn').innerHTML = owned.map((id) => `<option value="${id}">${HATS[id] || id}</option>`).join('');
+      $('optHatIn').value = me.hat;
+    }
+  };
+  $('optRide').innerHTML = VEHICLES.map((v) => `<option value="${v.id}">${v.name}</option>`).join('');
+  $('optRide').addEventListener('change', (e) => { switchRide(e.target.value); openSettings(false); });
+  $('optHatIn').addEventListener('change', (e) => { if (!me) return; me.setHat(e.target.value); store.set('hat', e.target.value); net.send('profile', { hat: e.target.value }); });
+  /** swap my buggy for another ride, dropped back in where I was */
+  function switchRide(id) {
+    if (!me || id === me.vehicle) return;
+    const x = me.body.p[0], { id: myId, colorIdx, name, hat } = me;
+    removeCar(myId);
+    me = makeCar({ id: myId, local: true, vehicle: id, colorIdx, name, hat });
+    me.respawnAt(x, 2);
+    store.set('vehicle', id);
+    net.send('profile', { vehicle: id });
+    toast(`${me.spec.name}: ${me.spec.blurb}`, 2.5);
+    updateHud(true);
+  }
   $('btnSettings').addEventListener('click', () => openSettings(true));
   $('btnClose').addEventListener('click', () => openSettings(false));
   $('btnLeave').addEventListener('click', () => { net.leave(); location.reload(); });
@@ -596,7 +620,7 @@ export async function startGame(loader) {
       $('actions').hidden = !touchUI;
       canvas.focus();
       toast(net.online ? `Dropped into the glade${net.code ? ` (room ${net.code})` : ''}. Smash something!` : 'Solo glade. The bots are already revving.', 3);
-      setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · grab glowing crates for gadgets' : 'A/D drive · W or Shift boost · Space hop · E gadget · H horn · R flip', 5), 3200);
+      setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ to change your ride' : 'A/D drive · W or Shift boost · Space hop · E gadget · Esc to change your ride', 5), 3200);
       updateHud(true);
     },
   };

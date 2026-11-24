@@ -10,7 +10,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Server, Room } from 'colyseus';
+import { Server, Room, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
@@ -95,12 +95,22 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 function serveStatic(req, res) {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
   if (url === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
+  if (url === '/rooms') { listRooms(res); return; }
   let file = path.join(ROOT, url === '/' ? 'index.html' : url);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
   if (!fs.existsSync(file)) { res.writeHead(404); res.end('Build the game first: npm run build'); return; }
   res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable' });
   fs.createReadStream(file).pipe(res);
+}
+
+// the lobby's list of open glades: [{ code, players, max }] ('' = the public glade)
+async function listRooms(res) {
+  let rooms = [];
+  try { rooms = await matchMaker.query({ name: 'glade' }); } catch { /* none yet */ }
+  const list = rooms.filter((r) => !r.locked || r.clients < r.maxClients).map((r) => ({ code: r.metadata?.code || '', players: r.clients, max: r.maxClients }));
+  res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(list));
 }
 
 const httpServer = http.createServer();

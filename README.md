@@ -17,8 +17,11 @@ npm run server     # just the Colyseus server (serves dist/ too)
 npm run itch       # static build zip for itch.io: release/headlight-smash-glade-web.zip
 ```
 
-Anyone on your Wi-Fi can join `http://<your-ip>:2567`. Players who type the same **ROOM** code
-share a glade. Empty seats are filled by bots, which run on the room's host browser.
+The menu has two buttons. **PLAY** drops you into a solo glade with bots. **CO-OP** opens the lobby:
+pick a room code (empty = the public glade, **NEW** = a private code to share) or tap an open glade,
+then your name, ride and hat. Anyone on your Wi-Fi can join `http://<your-ip>:2567`. Empty seats are
+filled by bots, which run on the room's host browser. Change your ride or hat mid-game from the ≡
+settings.
 
 ## The glade
 One lane, 240 m long, walled by fog at both ends. From west to east:
@@ -83,6 +86,7 @@ Screenshots go to `$HSG_SHOTS` (default: a `hsg-shots` folder in the system temp
 | `node scripts/playtest/hats.mjs <vehicle>` | every hat can be collected with its stunt |
 | `node scripts/playtest/mp.mjs` | 2 players: roster, host, bots, car and prop sync, guest barrel hit, host hand-over (`NOBOTS=1` for a deterministic run) |
 | `node scripts/playtest/soak.mjs 60 <vehicle> drive` | bots for a minute: fps, wrecks, scores, stuck bots, errors |
+| `node scripts/playtest/menu.mjs` | the menu (only PLAY + CO-OP), the lobby and its open-glade list, JOIN, the in-game ride swap, on desktop and phones |
 | `node scripts/playtest/phone.mjs` | portrait + landscape phone layout, touch driving, overlapping buttons |
 | `node scripts/playtest/shot.mjs <name> [query]` | a screenshot plus state |
 | `trace.mjs`, `jumps.mjs`, `stuck.mjs` | debugging timelines: suspension, jump apexes, stuck bots |
