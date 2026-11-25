@@ -2,6 +2,7 @@
 // team), the host's settings and START. Shown after CREATE / JOIN, before the first match, and
 // again after every match's results. Plain DOM; no engine imports.
 import { PAINTS, MAP_LIST, mapName } from './catalog.js';
+import { inviteLink } from './portal.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[<>&"]/g, '');
@@ -30,7 +31,8 @@ export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
   };
   $('rlGarage').onclick = () => garage();
   $('rlLeave').onclick = () => leave();
-  $('rlCode').onclick = async () => { try { await navigator.clipboard.writeText(net.code); } catch { /* the code is on screen */ } $('rlCode').classList.add('copied'); setTimeout(() => $('rlCode').classList.remove('copied'), 1200); };
+  // copies the code (on CrazyGames: an invite link that opens the game straight into this room)
+  $('rlCode').onclick = async () => { try { await navigator.clipboard.writeText(inviteLink(net.code) || net.code); } catch { /* the code is on screen */ } $('rlCode').classList.add('copied'); setTimeout(() => $('rlCode').classList.remove('copied'), 1200); };
 
   function paint() {
     if (!open) return;

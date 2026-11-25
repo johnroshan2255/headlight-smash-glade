@@ -15,7 +15,10 @@ export async function launch({ webgpu = false } = {}) {
     channel: 'chrome',
     headless: true,
     args: [
-      '--enable-gpu', '--use-angle=metal', '--ignore-gpu-blocklist', '--enable-webgl',
+      // the real GPU through ANGLE (Metal on a Mac, Direct3D 11 on Windows). Without it headless
+      // Chrome renders in software at ~3 fps, the game's clamped dt slows time down, and the
+      // timing-based checks (rams, slams, rockets) fail for no real reason
+      '--enable-gpu', `--use-angle=${process.platform === 'darwin' ? 'metal' : process.platform === 'win32' ? 'd3d11' : 'vulkan'}`, '--ignore-gpu-blocklist', '--enable-webgl',
       '--autoplay-policy=no-user-gesture-required', '--mute-audio',
       ...(webgpu ? ['--enable-unsafe-webgpu', '--enable-features=WebGPU'] : []),
     ],

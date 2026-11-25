@@ -16,7 +16,22 @@ npm run play       # build + start the game server on http://localhost:2567 (onl
 npm run dev        # Vite dev server (solo with bots, or add ?server=ws://localhost:2567)
 npm run server     # just the Colyseus server (serves dist/ too)
 npm run itch       # static build zip for itch.io: release/fogbash-web.zip
+VITE_SERVER_URL=wss://<railway-app> npm run crazygames   # CrazyGames zip: release/fogbash-crazygames.zip
 ```
+
+## CrazyGames
+`npm run crazygames` builds into `dist-crazygames/` with `VITE_PORTAL=crazygames` and zips it. Only `src/portal.js` differs; it's a no-op in every other build.
+- **SDK v3** is in `<head>` (added by `vite.config.js`). `init()` runs during loading (5 s cap). `loadingStart` / `loadingStop` wrap the loading screen.
+- **gameplayStart / gameplayStop** follow actual driving. They stop for the ≡ menu, the garage, the room's lobby and the results.
+- **muteAudio** is respected (`sfx.setMuted`).
+- **No custom fullscreen** (button, touch re-entry): CrazyGames provides it.
+- **No name/password sign-in:** progress stays on the device, and a signed-in CrazyGames player's name is used.
+- **Multiplayer:**
+  - The room code button copies an invite link (`?room=` in `czy_invite_params`).
+  - Opening an invite joins that room, and instant multiplayer creates a private room.
+  - `updateRoom` / `leftRoom` keep CrazyGames informed.
+- **The game server** must be reachable from crazygames.com: leave `CORS_ORIGINS` unset on Railway, or add the CrazyGames origins to it.
+- **Local check:** serve `dist-crazygames` on localhost, where the SDK runs in `local` mode (`?muteAudio=true` works there).
 
 The menu has three buttons. **PLAY** drops you into a solo glade with bots, on the map shown under the buttons (‹ › picks Endless Glade, The Glade, Moon Crater, The Bog or The Quarry; the world behind the menu switches to show it). **CO-OP** is for rooms:
 - **JOIN:** lists the public rooms (host name, players, waiting or playing). Tap one to join it. For a private room, type its code.
@@ -162,7 +177,7 @@ Gadget crates still give a temporary power-up for 25 s:
   - In the air the buggy steadies itself for the landing. Press against the way you face to backflip.
   - **E** fires the roof gadget, **Q** the bumper gadget, F a crate power-up.
   - H honks and L flashes your headlights. R flips the car upright.
-  - Hold Tab for the scores. The mouse wheel zooms. Esc opens settings (and the garage).
+  - Hold Tab for the scores. The mouse wheel zooms. Esc or P opens settings (and the garage) once you're driving.
 - **Touch:** ◀ ▶ pedals, plus BOOST, HOP, ROOF, BUMPER, POWER, HONK and FLIP. Gadget buttons appear when something is fitted.
 - **Gamepad:** left stick or d-pad to drive, RT/RB to boost, A to hop, X for the roof gadget, B for the bumper gadget, Y to honk, LB to flash your headlights, Start to flip.
 

@@ -535,6 +535,7 @@ body.touch #toast { top: calc(max(10px, env(safe-area-inset-top)) + 112px); }
 }
 #acctChip b { font-weight: 400; color: #ffd29c; letter-spacing: 0.1em; font-size: 11px; }
 #acctChip:hover { border-color: rgba(255, 210, 156, 0.4); }
+#acctChip.static { pointer-events: none; cursor: default; }
 .ride-line { font: inherit; font-size: 11px; letter-spacing: 0.3em; text-align: left; color: #ffd29c; background: rgba(0, 0, 0, 0.32); border: 1px solid rgba(236, 233, 226, 0.12); border-radius: 5px; padding: 8px 10px; cursor: pointer; }
 .ride-line::after { content: '  ›'; color: rgba(236, 233, 226, 0.5); }
 .ride-line:hover { border-color: rgba(255, 210, 156, 0.4); }

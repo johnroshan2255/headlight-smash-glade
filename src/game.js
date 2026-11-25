@@ -23,6 +23,7 @@ import { BotBrain, botName } from './bots.js';
 import * as sfx from './audio.js';
 import { OIL_HALF } from './mods.js';
 import { setupRoomLobby, teamCSS, teamName } from './roomlobby.js';
+import * as portal from './portal.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -35,18 +36,27 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const QUERY = new URLSearchParams(location.search);
 const TARGET_CARS = QUERY.has('bots') ? 1 + clamp(Number(QUERY.get('bots')) || 0, 0, 7) : 6; // humans + bots (?bots=0 for an empty glade)
 
+/** { device, canvas }: WebGPU where it's good, else WebGL 2. A WebGPU start that hangs (a flaky
+ *  driver; Chrome with several WebGPU tabs) falls back to WebGL 2 after a few seconds instead of
+ *  leaving the loading screen stuck, on a fresh canvas (a canvas can't switch context types). */
 async function createDevice(canvas) {
   const pref = new URLSearchParams(location.search).get('gpu') || store.get('renderer', 'auto');
   const order = pref === 'webgpu' ? [pc.DEVICETYPE_WEBGPU, pc.DEVICETYPE_WEBGL2] : pref === 'webgl2' ? [pc.DEVICETYPE_WEBGL2]
     : navigator.gpu && !isMobile() ? [pc.DEVICETYPE_WEBGPU, pc.DEVICETYPE_WEBGL2] : [pc.DEVICETYPE_WEBGL2];
-  return pc.createGraphicsDevice(canvas, { deviceTypes: order, antialias: false, alpha: false, depth: false, stencil: false, powerPreference: isMobile() ? 'default' : 'high-performance' });
+  const opts = { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: isMobile() ? 'default' : 'high-performance' };
+  if (order[0] !== pc.DEVICETYPE_WEBGPU) return { device: await pc.createGraphicsDevice(canvas, { ...opts, deviceTypes: order }), canvas };
+  const device = await Promise.race([pc.createGraphicsDevice(canvas, { ...opts, deviceTypes: order }), new Promise((r) => setTimeout(() => r(null), 8000))]);
+  if (device) return { device, canvas };
+  console.warn('WebGPU did not start in 8 s: using WebGL 2');
+  const fresh = canvas.cloneNode(false);
+  canvas.replaceWith(fresh);
+  return { device: await pc.createGraphicsDevice(fresh, { ...opts, deviceTypes: [pc.DEVICETYPE_WEBGL2] }), canvas: fresh };
 }
 
 export async function startGame(loader) {
-  const canvas = $('app');
   loader.stage('starting the engines', 0);
-  let device;
-  try { device = await createDevice(canvas); } catch (err) { console.error(err); throw new Error('This browser could not start WebGL 2 or WebGPU.'); }
+  let device, canvas;
+  try { ({ device, canvas } = await createDevice($('app'))); } catch (err) { console.error(err); throw new Error('This browser could not start WebGL 2 or WebGPU.'); }
   const info = detectTier(device);
   const tier = info.tier;
   const opts = new pc.AppOptions();
@@ -452,7 +462,7 @@ export async function startGame(loader) {
     enter: () => enterHook && enterHook(),
     inGame: () => started,
     garage: () => { if (!started && garageHook) garageHook(); else window.dispatchEvent(new CustomEvent('hsg:garage', { detail: { inGame: started } })); },
-    leave: () => { net.leave(); location.reload(); },
+    leave: () => { portal.leftRoom(); net.leave(); location.reload(); },
   });
   net.on('match', onMatch);
 
@@ -522,7 +532,8 @@ export async function startGame(loader) {
     if (c.local) net.send('honk', { id: c.id });
   }
 
-  await account.init(serverUrl);
+  // on CrazyGames there's no sign-in of our own (their rules): progress stays in this browser
+  await account.init(portal.ON_CRAZY ? null : serverUrl);
   const sandbox = new Sandbox({ app, layer, physics, terrain, fx, net, hooks: {
     boom: applyBoom,
     grant: (msg) => onGrant(msg),
@@ -695,13 +706,14 @@ export async function startGame(loader) {
   net.on('regrow', (m) => { const T = sandbox.trees.get(m.i); if (T && T.snapped) sandbox.regrow(T); });
   net.on('slide', (m) => { if (sandbox.isHost) { const sl = sandbox.slides.get(m.i); if (sl) sandbox.releaseSlide(sl); } });
   net.on('rumble', (m) => sfx.play('rumble', { x: m.x, z: 0 }, { maxDist: 70 }));
-  net.on('roster', () => { if (!started || net.phase !== 'playing') applyMap(roomMap()); syncBots(); updateBoard(); if (!$('settings').hidden) paintRoom(); });
+  net.on('roster', () => { if (!started || net.phase !== 'playing') applyMap(roomMap()); syncBots(); updateBoard(); if (!$('settings').hidden) paintRoom(); portal.inRoom(net.code, net.players.length < 8); });
   net.on('becameHost', () => { toast('You are now hosting the glade.', 2.5); for (const id of [...cars.keys()]) if (String(id).startsWith('bot') && !bots.has(id)) removeCar(id); sandbox.setAuthority(); syncBots(); });
   // the room is gone (the host left, or the server went away): back to the menu, with the reason
   net.on('disconnected', (m) => {
     const why = m.reason || 'Lost the connection to the server.';
     showLine(why, 4);
     paused = true;
+    portal.leftRoom();
     try { sessionStorage.setItem('hsg.notice', why); } catch { /* */ }
     setTimeout(() => location.reload(), 2200);
   });
@@ -879,12 +891,19 @@ export async function startGame(loader) {
   $('btnClose').addEventListener('click', () => openSettings(false));
   let leaveT = 0;
   $('btnLeave').addEventListener('click', () => { // tap twice: leaving a room you host closes it for everyone
-    if (performance.now() - leaveT < 2500) { net.leave(); location.reload(); return; }
+    if (performance.now() - leaveT < 2500) { portal.leftRoom(); net.leave(); location.reload(); return; }
     leaveT = performance.now();
     $('btnLeave').textContent = net.online && net.isHost ? 'CLOSE ROOM?' : 'SURE?';
     setTimeout(() => { $('btnLeave').textContent = 'LEAVE'; }, 2500);
   });
-  window.addEventListener('keydown', (e) => { if (e.code === 'Escape') openSettings($('settings').hidden); });
+  // Esc (or P: Esc also leaves fullscreen) opens the ≡ menu, only once you're driving: not over the
+  // title menu or the room's lobby, which have their own BACK / LEAVE
+  window.addEventListener('keydown', (e) => {
+    if ((e.code !== 'Escape' && e.code !== 'KeyP') || !started) return;
+    if (e.code === 'KeyP' && e.target instanceof HTMLInputElement && e.target.type !== 'range') return; // typing
+    if (roomLobby.open && $('settings').hidden) return;
+    openSettings($('settings').hidden);
+  });
   $('optQuality').addEventListener('change', (e) => { store.set('quality', e.target.value); quality.setManual(e.target.value); if (e.target.value === 'auto') quality.maxLevel = tier; });
   // ASCII view off
   // $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
@@ -1112,6 +1131,8 @@ export async function startGame(loader) {
     $('board').hidden = !input.board;
     if (input.board) updateBoard();
     if (started) { updateSmoke(); updateHud(); updateTags(); updatePointers(); updateClock(); }
+    // CrazyGames: "gameplay" is only actual driving, not the ≡ menu, the garage, the room's lobby or the results
+    portal.setPlaying(started && !paused && $('settings').hidden && $('garageUI').hidden && !roomLobby.open && $('matchEnd').hidden);
     statsTimer -= rawDt;
     if (showStats && statsTimer <= 0) {
       statsTimer = 0.5;
@@ -1171,6 +1192,7 @@ export async function startGame(loader) {
       seenPhase = net.phase;
       applyMap(roomMap());
       roomLobby.show();
+      portal.inRoom(net.code, net.players.length < 8); // friends can join from CrazyGames' side too
       return { ok: true };
     },
     /** the menu's solo map choice: the world behind the menu switches to it */

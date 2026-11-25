@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "itch": "vite build && node scripts/package-itch.mjs",
     "server": "node server/index.js",
-    "play": "vite build && node server/index.js"
+    "play": "vite build && node server/index.js",
+    "crazygames": "node scripts/package-crazygames.mjs"
   },
   "description": "Drop-in multiplayer physics buggy sandbox in a foggy glade (PlayCanvas, WebGL2/WebGPU)",
   "dependencies": {

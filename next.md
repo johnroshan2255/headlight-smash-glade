@@ -1,6 +1,6 @@
 # next.md: where Fogbash is and what's next
 
-_Last session: 2026-11-25. Rooms, matches, audio and parts were committed in acfd554. The maps came after that and are not committed yet._
+_Last session: 2026-11-25 (launch prep for CrazyGames). Everything up to the maps is committed._
 
 ## Where we are
 - **The glade is endless in both directions** (`src/gen.js`):
@@ -148,8 +148,24 @@ All of these pass:
 - **mpmods:** loadout sync, glove and ball hits across the network.
 
 ## Still to do
-- **Listen on real devices:** check the engine loop's pitch range, the crash variety and the music levels against the effects. On iPhone, music may only start on the second tap (iOS wants a gesture for each media element).
-- **The CrazyGames SDK,** plus hosting the server online for co-op there.
+- **CrazyGames launch (2026-11-25):**
+  - Done: `src/portal.js` plus `npm run crazygames` (see the README). Checked against the SDK in `local` mode: gameplay start/stop, muteAudio, invite link into a room, no fullscreen button, no sign-in.
+  - Build with `VITE_SERVER_URL=wss://<railway app> npm run crazygames` and upload `release/fogbash-crazygames.zip`.
+  - Railway: keep `CORS_ORIGINS` unset, or allow the CrazyGames origins. Give `HSG_DATA` a volume, or accounts reset on every deploy.
+  - Not done: ads (Basic Launch has none), the Data module (progress stays in localStorage), instant multiplayer is untested on the real portal.
+- **Launch-prep fixes (2026-11-25):**
+  - F toggled fullscreen as well as firing the crate power-up. F is now only the power-up.
+  - Esc on the title menu or in a room's lobby opened the in-game ≡ card. It now opens only while driving; P opens it too.
+  - A join that finished after the 6 s timeout stayed in the room as a ghost (for CREATE, a ghost-hosted room in the JOIN list). Now it leaves, and the timeout is 8 s.
+  - Music on iPhone: two reused `<audio>` elements are started on the first tap, so later tracks no longer need a second tap.
+  - The "No game server" message now reads like a player message, not a dev command.
+  - The server ignores non-object messages, which would throw on `.from`.
+  - A WebGPU start that hangs (seen with several WebGPU tabs in Chrome) left the loading screen stuck forever. After 8 s it now falls back to WebGL 2 on a fresh canvas.
+  - Physics steps with the frame's dt (3 substeps), so feel can differ a little between 60 Hz and 144 Hz screens (square-wheel thump is weaker at 144 Hz). A fixed timestep with interpolation would make it identical; it wasn't changed on launch day.
+  - Playtests on Windows used software GL at ~3 fps (`--use-angle=metal` is Mac-only), and the timing checks failed. `lib.mjs` now picks d3d11/metal/vulkan. syncaudit needs 60 s matches (see its header).
+- **Listen on real devices:** check the engine loop's pitch range, the crash variety and the music levels against the effects. Confirm iPhone music now starts on the first tap.
+- **Host leaving closes the room,** and a host with the tab in the background freezes props and bots for everyone, since the host simulates them. Host hand-over or a server-side world would fix both.
+- **Brief disconnects** (phones switching network) drop you to the menu. Colyseus reconnection (`allowReconnection`) would keep the seat.
 - **Feel check on devices:** balloon bounce, square-wheel thump, smoke size, oil spin strength, magnet climb strength.
 - **Golden Hat mode** (from the idea list) wasn't built; timed matches took its place.
 - **Commit and push** this work.

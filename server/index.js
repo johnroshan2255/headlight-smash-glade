@@ -37,7 +37,7 @@ class GladeRoom extends Room {
     this.settings = { private: !!options.private, bots: GladeRoom.botCount(options.bots ?? 0), time: GladeRoom.matchMinutes(options.time), map: MAP_IDS.includes(options.map) ? options.map : options.autostart ? 'endless' : 'glade' };
     this.match = { n: 0, phase: 'lobby', over: true, endsAt: 0, nextAt: 0 };
     this.setMetadata({ code: options.code || '', private: this.settings.private, bots: this.settings.bots, host: '', phase: 'lobby', time: this.settings.time, endsAt: 0, map: this.settings.map });
-    this.onMessage('*', (client, type, msg) => this.relay(client, String(type), msg || {}));
+    this.onMessage('*', (client, type, msg) => this.relay(client, String(type), msg && typeof msg === 'object' ? msg : {})); // (a stray primitive can't take .from)
     this.autoStart = !!options.autostart; // the playtests' ?autostart: skip the lobby
   }
 

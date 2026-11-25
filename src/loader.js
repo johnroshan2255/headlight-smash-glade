@@ -4,6 +4,7 @@
 import { setupGarage } from './garage.js';
 import * as sfx from './audio.js';
 import { MAP_LIST, mapName } from './catalog.js';
+import * as portal from './portal.js';
 
 const $ = (id) => document.getElementById(id);
 // colour or monochrome title card, matching the player's saved choice
@@ -128,11 +129,12 @@ async function boot() {
     return;
   }
   els.stage.textContent = 'fuelling up';
+  const portalUp = portal.initPortal(); // CrazyGames build only; never waits more than ~5 s
 
   let mod;
   try {
     // starts the engine + game chunk download; the HTML is already on screen
-    [mod] = await Promise.all([import('./game.js'), document.fonts?.ready]);
+    [mod] = await Promise.all([import('./game.js'), document.fonts?.ready, portalUp]);
   } catch (err) {
     console.error(err);
     fail('Could not download the game. Check your connection and retry.');
@@ -159,6 +161,8 @@ async function boot() {
   els.boot.classList.add('ready');
   els.menu.hidden = false;
   els.play.focus({ preventScroll: true });
+  portal.loadingDone();
+  portal.onMute((m) => sfx.setMuted(m)); // CrazyGames' muteAudio setting
   setTimeout(sfx.prefetch, 400); // sound effects download while the menu is up (music streams later)
   // the solo map: endless, or one of the room arenas (the world behind the menu switches with it)
   const SOLO_MAPS = ['endless', ...MAP_LIST.map((m) => m.id)];
@@ -178,7 +182,7 @@ async function boot() {
   $('acctChip').hidden = false;
   // sound: the first tap or key press unlocks audio and starts the menu music; buttons click
   const unlock = () => { sfx.initAudio(); sfx.setMusic(document.body.contains(els.boot) ? 'menu' : 'glade'); };
-  for (const ev of ['pointerup', 'keydown']) window.addEventListener(ev, unlock, { capture: true, passive: true });
+  for (const ev of ['pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(ev, unlock, { capture: true, passive: true });
   document.addEventListener('click', (e) => {
     const b = e.target instanceof Element && e.target.closest('button');
     if (!b || b.disabled) return;
@@ -191,6 +195,12 @@ async function boot() {
   window.addEventListener('hsg:account', () => { if (game.account.name) nameEl.value = game.account.name; });
   roomEl.value = (q.get('room') || ls.get('room', '')).toUpperCase();
   if (q.get('name')) nameEl.value = q.get('name');
+  // on CrazyGames a signed-in player drives under their CrazyGames name
+  let typedName = false;
+  nameEl.addEventListener('input', () => { typedName = true; });
+  const usePortalName = (n) => { game.account.portalName = n; if (n && !typedName && !q.get('name')) nameEl.value = n; game.account.emit(); };
+  portal.portalUser().then(usePortalName);
+  portal.onPortalUser(usePortalName);
 
   // ---------------------------------------------------------------- the lobby: JOIN or CREATE
   // JOIN: tap a public room in the list, or type a private room's code.
@@ -240,9 +250,11 @@ async function boot() {
     joining = false; syncRoom();
     if (r.error) { $('lobbyMsg').textContent = r.error; $('lobbyMsg').hidden = false; return; }
     if (how === 'join') ls.set('room', code);
+    inRoom = true;
     clearInterval(pollTimer);
     els.lobby.hidden = true; // the room's lobby takes over
   }
+  let inRoom = false;
   $('btnJoin').addEventListener('click', () => joinRoom('join', roomEl.value));
   $('btnCreate').addEventListener('click', () => joinRoom('create', freshCode()));
 
@@ -255,7 +267,7 @@ async function boot() {
     if (open) {
       const off = !game.online;
       $('lobbyMsg').hidden = !off;
-      $('lobbyMsg').textContent = off ? 'No game server. Run "npm run play" and open its address on every device.' : '';
+      $('lobbyMsg').textContent = off ? 'Co-op is offline right now (the game server didn\'t answer). PLAY solo with bots, or reload in a moment.' : '';
       for (const id of ['btnCreate', 'optRoom']) $(id).disabled = off;
       if (!off) { pollRooms(); pollTimer = setInterval(pollRooms, 3000); }
       syncRoom();
@@ -290,7 +302,27 @@ async function boot() {
   // click (not pointerdown): on touch screens only the release counts as a user activation
   els.play.addEventListener('click', (e) => begin(e, 'solo'));
   window.addEventListener('keydown', keys);
-  if (q.has('autostart')) begin(null, q.get('mode') || 'online');
+  if (q.has('autostart')) { begin(null, q.get('mode') || 'online'); return; }
+
+  // ---------------------------------------------------------------- CrazyGames: invites and instant multiplayer
+  // Opened from a friend's invite link: straight into their room (once: if that room has closed and
+  // the page reloads, don't try it again). "Play with friends" (instant multiplayer): a new private room.
+  const invited = portal.inviteRoom();
+  const tried = (() => { try { return sessionStorage.getItem('hsg.invited'); } catch { return null; } })();
+  const joinFromInvite = (code) => {
+    if (!code || begun || inRoom || joining || !game.online) return;
+    try { sessionStorage.setItem('hsg.invited', code); } catch { /* */ }
+    roomEl.value = code;
+    showLobby(true);
+    joinRoom('join', code);
+  };
+  if (invited && invited !== tried) joinFromInvite(invited);
+  else if (portal.instantMultiplayer() && game.online && !tried) {
+    try { sessionStorage.setItem('hsg.invited', 'instant'); } catch { /* */ }
+    showLobby(true); setLobbyMode('create'); newPrivate = true;
+    joinRoom('create', freshCode());
+  }
+  portal.onJoinInvite(joinFromInvite); // invited while already on the menu
 }
 
 boot();

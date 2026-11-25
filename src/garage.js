@@ -1,6 +1,7 @@
 // The garage (shop + loadout) and the account panel. Plain DOM; the car you're looking at is a
 // live preview in the game scene behind the panel. Opened from the menu or from in-game settings.
 import { RIDES, WHEELS, ROOF, BUMPER, UPGRADES, HAT_IDS, HAT_PRICE, TIRE_RANGE, PAINTS } from './catalog.js';
+import { ON_CRAZY } from './portal.js';
 
 const $ = (id) => document.getElementById(id);
 const HAT_NAMES = {
@@ -27,11 +28,14 @@ export function setupGarage(game, { onClose } = {}) {
   const paintChip = () => {
     const P = A.profile;
     if (!P) return;
-    $('acctName').textContent = P.name ? P.name.toUpperCase() : 'GUEST';
+    $('acctName').textContent = (P.name || A.portalName || 'GUEST').toUpperCase();
     $('acctCoins').textContent = coins(A.coins);
   };
   A.onChange(() => { paintChip(); if (open) render(); });
-  chip.onclick = () => openAccount();
+  // CrazyGames doesn't allow a game's own sign-in: there the chip only shows your name and coins
+  // (progress is kept on the device), and the register / sign-in panel never opens
+  if (ON_CRAZY) { chip.classList.add('static'); chip.tabIndex = -1; chip.setAttribute('aria-disabled', 'true'); }
+  else chip.onclick = () => openAccount();
 
   // ---------------------------------------------------------------- garage: tap to equip, the car wears it at once
   const tabsEl = $('gTabs'), itemsEl = $('gItems');

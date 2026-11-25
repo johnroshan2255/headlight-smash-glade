@@ -4,7 +4,8 @@
 // plays instead so the game is never silent.
 
 let ctx = null;
-let master, sfxBus, reverbSend, ambBus, musicBus;
+let master, sfxBus, reverbSend, ambBus, musicBus, muteNode;
+let muted = false;
 let noiseBuf = null;
 const listener = { x: 0, z: 0, yaw: 0 };
 const store = { get(k, d) { try { const v = localStorage.getItem(`hsg.${k}`); return v === null ? d : Number(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(`hsg.${k}`, String(v)); } catch { /* private mode */ } } };
@@ -96,12 +97,16 @@ export function initAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
   ctx = new AC({ latencyHint: 'interactive' });
+  // the very last stage: the portal can silence everything (CrazyGames' muteAudio setting)
+  muteNode = ctx.createGain();
+  muteNode.gain.value = muted ? 0 : 1;
+  muteNode.connect(ctx.destination);
   master = ctx.createGain();
   master.gain.value = 0.9;
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -14;
   comp.ratio.value = 4;
-  master.connect(comp).connect(ctx.destination);
+  master.connect(comp).connect(muteNode);
   sfxBus = ctx.createGain();
   sfxBus.gain.value = vol.sfx;
   sfxBus.connect(master);
@@ -110,7 +115,7 @@ export function initAudio() {
   ambBus.connect(sfxBus);
   musicBus = ctx.createGain(); // music skips the compressor so explosions don't pump it
   musicBus.gain.value = vol.music;
-  musicBus.connect(ctx.destination);
+  musicBus.connect(muteNode);
   const reverb = ctx.createConvolver();
   reverb.buffer = makeImpulse();
   reverbSend = ctx.createGain();
@@ -118,6 +123,7 @@ export function initAudio() {
   reverbSend.connect(reverb).connect(master);
   noiseBuf = makeNoise(2);
   loadAll();
+  primePlayers(); // inside this tap: lets the music elements play later without another one (iOS)
   if (wantMusic) setMusic(wantMusic);
   document.addEventListener('visibilitychange', () => {
     if (!ctx) return;
@@ -141,6 +147,11 @@ export function setVolumes(v) {
   musicBus.gain.setTargetAtTime(vol.music, ctx.currentTime, 0.05);
 }
 export const getVolumes = () => ({ ...vol });
+/** silence everything (the portal asked: muteAudio, an ad); the volume sliders stay as they are */
+export function setMuted(m) {
+  muted = !!m;
+  if (muteNode) muteNode.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
+}
 
 // ------------------------------------------------------------------ building blocks
 /** Output node for a sound at world (x,z) (or non-positional when x is undefined). */
@@ -382,30 +393,64 @@ const SCENES = {
   hallow: { tracks: ['music-hallow.mp3'], wind: 0.4, bed: 'amb-crickets.mp3', bedVol: 0.45, calls: { name: 'crow', vol: 0.4, every: [10, 24] } },
 };
 let scene = SCENES.glade, sceneId = 'glade';
-const music = { el: null, gain: null, kind: null, idx: 0 };
+const music = { el: null, gain: null, kind: null, idx: 0, p: null };
 let wantMusic = null;
+const trackList = (kind) => (kind === 'glade' ? scene.tracks : TRACKS[kind]);
 
-function fadeOut(m, secs = 1.5) {
-  if (!m.el) return;
-  const { el, gain } = m;
-  gain.gain.setTargetAtTime(0, ctx.currentTime, secs / 4);
-  setTimeout(() => { el.pause(); el.removeAttribute('src'); el.load(); try { gain.disconnect(); } catch { /* */ } }, secs * 1000 + 200);
-}
-function startTrack(kind) {
-  const list = kind === 'glade' ? scene.tracks : TRACKS[kind];
-  const file = list[music.idx % list.length];
+// Two <audio> elements, reused for every track (two so one can fade out while the next fades in).
+// iOS only lets an element play from code once a tap has started it, so both are started on the
+// first tap (primePlayers) and kept: later tracks (PLAY, a map change, the next glade track, a
+// room's match start) then play without needing another tap.
+const players = [];
+function makePlayer() {
   const el = new Audio();
   el.preload = 'auto';
-  el.loop = list.length === 1;
-  el.src = url(file);
   const node = ctx.createMediaElementSource(el);
   const gain = ctx.createGain();
   gain.gain.value = 0;
   node.connect(gain).connect(musicBus);
-  gain.gain.setTargetAtTime(1, ctx.currentTime, 0.8);
-  el.addEventListener('ended', () => { if (music.el === el) { music.idx++; fadeOut({ el, gain }, 0.1); Object.assign(music, startTrack(kind)); } });
-  el.play().catch(() => {}); // retried on the next gesture by initAudio()
-  return { el, gain, kind };
+  const p = { el, gain, use: 0, busy: false };
+  el.addEventListener('ended', () => { // the next track of this scene, on the same element
+    if (music.p !== p || !music.kind) return;
+    const list = trackList(music.kind);
+    music.idx++;
+    el.src = url(list[music.idx % list.length]);
+    el.loop = list.length === 1;
+    el.play().catch(() => {});
+  });
+  players.push(p);
+  return p;
+}
+function primePlayers() {
+  while (players.length < 2) makePlayer();
+  for (const p of players) {
+    if (p.busy) continue;
+    const use = ++p.use;
+    p.el.src = url(TRACKS.menu[0]);
+    p.el.play().then(() => { if (p.use === use) { p.el.pause(); p.el.removeAttribute('src'); p.el.load(); } }).catch(() => {});
+  }
+}
+function freePlayer() {
+  return players.find((q) => q !== music.p && !q.busy) || (players.length < 2 ? makePlayer() : players.find((q) => q !== music.p));
+}
+function fadeOut(p, secs = 1.5) {
+  if (!p) return;
+  const use = p.use;
+  p.gain.gain.setTargetAtTime(0, ctx.currentTime, secs / 4);
+  setTimeout(() => { if (p.use !== use) return; p.el.pause(); p.el.removeAttribute('src'); p.el.load(); p.busy = false; }, secs * 1000 + 200);
+}
+function startTrack(kind) {
+  const list = trackList(kind);
+  const p = freePlayer();
+  p.use++;
+  p.busy = true;
+  p.gain.gain.cancelScheduledValues(ctx.currentTime);
+  p.gain.gain.setValueAtTime(0, ctx.currentTime);
+  p.gain.gain.setTargetAtTime(1, ctx.currentTime, 0.8);
+  p.el.loop = list.length === 1;
+  p.el.src = url(list[music.idx % list.length]);
+  p.el.play().catch(() => {}); // retried on the next gesture by initAudio()
+  return { el: p.el, gain: p.gain, kind, p };
 }
 /** 'menu', 'glade' or null for silence. Applied a moment later, so the tap on PLAY that unlocks
  *  audio doesn't start (and download) the menu track just before the glade music replaces it. */
@@ -418,15 +463,15 @@ export function setMusic(kind) {
 function applyMusic() {
   const kind = wantMusic;
   if (!ctx || (kind === music.kind && (kind !== 'glade' || music.scene === sceneId))) return;
-  fadeOut(music);
-  Object.assign(music, { el: null, gain: null, kind: null });
+  fadeOut(music.p);
+  Object.assign(music, { el: null, gain: null, kind: null, p: null });
   if (kind) { if (kind === 'glade') music.idx = Math.floor(Math.random() * scene.tracks.length); Object.assign(music, startTrack(kind), { scene: sceneId }); }
 }
 
 // ------------------------------------------------------------------ for the playtests
 const stats = { played: {}, fallback: {} };
 window.__hsgAudio = () => ({
-  state: ctx && ctx.state, loaded: buffers.size, loadedAll, engine: !!engine, wind: buffers.has('wind.mp3'),
+  state: ctx && ctx.state, loaded: buffers.size, muted, players: players.length, loadedAll, engine: !!engine, wind: buffers.has('wind.mp3'),
   missing: Object.values(BANK).flatMap((S) => S.files).filter((f) => !buffers.has(`${f}.mp3`)),
   music: music.kind, track: music.el && music.el.src.split('/').pop(), playing: !!(music.el && !music.el.paused), t: music.el ? music.el.currentTime : 0,
   engineRate: engine ? engine.layers[0].src.playbackRate.value : 0, engineGain: engine ? engine.eg.gain.value : 0,

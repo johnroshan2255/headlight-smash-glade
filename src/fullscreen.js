@@ -3,14 +3,18 @@
 // Browsers only allow hiding their UI (address bar, tabs) from inside a user gesture, so:
 //  - the first tap/click/key ("begin") requests fullscreen on every device,
 //  - on touch devices any later tap on the game re-enters fullscreen if the player swiped out,
-//  - desktop gets a toggle button + F key and is never forced back in,
+//  - desktop gets a toggle button (no key: F fires the crate power-up) and is never forced back in,
+//  - on CrazyGames none of this: they provide fullscreen and don't allow a game's own,
 //  - when launched as an installed app (manifest display: fullscreen) there is no browser UI at all.
 // iPhone Safari has no element Fullscreen API; there the home-screen app is the way to go.
+
+import { ON_CRAZY } from './portal.js';
 
 const doc = document;
 const root = doc.documentElement;
 
-export const fullscreenSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen) &&
+// CrazyGames provides fullscreen itself and doesn't allow a game's own button (or forcing it)
+export const fullscreenSupported = !ON_CRAZY && !!(root.requestFullscreen || root.webkitRequestFullscreen) &&
   (doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled ?? true);
 
 export function isFullscreen() {
@@ -74,11 +78,9 @@ export function setupFullscreen({ button, canvas, touchDevice, onChange }) {
     e.stopPropagation();
     toggleFullscreen();
   });
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyF' && !(e.target instanceof HTMLSelectElement)) toggleFullscreen();
-  });
+  // (no F key: F fires the crate power-up)
 
-  if (touchDevice) {
+  if (touchDevice && fullscreenSupported) {
     // Phones: if the player swiped out of fullscreen, the next touch on the game puts it back.
     canvas.addEventListener('pointerup', () => {
       if (!isFullscreen() && !isInstalledApp()) enterFullscreen();

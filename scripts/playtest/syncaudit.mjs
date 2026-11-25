@@ -3,7 +3,10 @@
 // or two of its owner's position), and not be rebuilt every frame. Walks through: the lobby and START,
 // driving, a ride change, a colour change, smoke, the ejector seat, a wreck + respawn, the map
 // changing between matches, the next match, and a late joiner.
-// Needs a server with short matches:  PORT=2568 MATCH_MS=25000 MATCH_BREAK_MS=4000 node server/index.js
+// Needs a server with 60 s matches (its steps take ~45 s; with shorter matches the eject and wreck
+// checks land in the lobby, where nobody sends car updates, and fail for no real reason):
+//   PORT=2569 MATCH_MS=60000 MATCH_BREAK_MS=4000 node server/index.js
+//   HSG_MATCH_URL=http://localhost:2569 node scripts/playtest/syncaudit.mjs
 import { launch, sleep, SHOTS } from './lib.mjs';
 const BASE = process.env.HSG_MATCH_URL || 'http://localhost:2568';
 const browser = await launch();

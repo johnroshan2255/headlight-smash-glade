@@ -65,7 +65,11 @@ export class Net {
     const client = new Client(url);
     const opts = { code, name, vehicle, hat, private: priv, bots, time, map, autostart: how === 'auto' };
     const join = how === 'create' ? client.create('glade', opts) : how === 'join' ? client.join('glade', opts) : client.joinOrCreate('glade', opts);
-    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 6000));
+    // a slow join that lands after we gave up must leave again, or it'd sit in the room as an
+    // invisible player (or, for CREATE, host a ghost room that shows up in the JOIN list)
+    let gaveUp = false;
+    const timeout = new Promise((_, rej) => setTimeout(() => { gaveUp = true; rej(new Error('timeout')); }, 8000));
+    join.then((r) => { if (gaveUp) try { r.leave(); } catch { /* */ } }, () => {});
     this.room = await Promise.race([join, timeout]);
     this.code = code;
     this.id = this.room.sessionId;
