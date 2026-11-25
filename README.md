@@ -99,7 +99,10 @@ Chunk types:
 - **Accounts:** you play straight away as a guest. Register a name and password any time from the account chip (top right) to keep your garage on every device; the guest's progress moves into the new account.
 - **Coins:** you earn them for smashes, distance, flips, air time, crates, barrels and hats. The server caps how fast coins can be credited.
 - **GARAGE:** on the menu, or from ≡ in-game. It shows a live preview of the car. Tap an item you own to equip it; a locked one shows its price and a BUY button.
-- **Free for now:** everything is free while `FREE_FOR_NOW` is on in `src/catalog.js`. Flip it to `false` to turn prices back on.
+- **Prices:** cheap on purpose, so everyone can buy things. You start with 200 coins.
+  - Rides cost 50–300 (the Mudrunner is free), wheels 50–250, roof gadgets 100–250, bumper gadgets 50–150.
+  - Hats cost 50 (or find them), and the Monster-Scale tire upgrade costs 100. Paint is always free.
+  - Prices and coin rewards live in `src/catalog.js`. Set `FREE_FOR_NOW = true` there to make everything free again.
 - **Storage:** accounts, coins, purchases and setups live in `server/data/accounts.json` (git-ignored). Passwords are scrypt-hashed and tokens are stored hashed. Without a server (the itch build) the profile is kept in the browser.
 
 **Paint:**
@@ -162,7 +165,8 @@ Gadget crates still give a temporary power-up for 25 s:
   - GARAGE, and LEAVE (tap twice; in a room you host, it closes the room).
   - Solo: a MAP row that switches the map on the spot.
   - In a room: the code, and for the host BOTS / MINUTES / PUBLIC-PRIVATE.
-  - MUSIC and SOUND, quality, colour or mono, stats, renderer, and a fold-out CONTROLS list.
+  - MUSIC and SOUND, quality, colour or mono, stats, and a fold-out CONTROLS list.
+  - The renderer isn't a setting. The game picks it: WebGPU on desktops that have it, WebGL 2 on phones and everywhere else. WebGPU falls back to WebGL 2 if it fails or hangs. `?gpu=webgl2|webgpu` forces one for testing.
 - **The corner** shows only your smashes and place. The endless glade also shows hats. Controls hints appear only on your first two drives, and coin pops only for big things.
 - **A player gone quiet** (their phone switched apps) stays on screen marked *away* for up to 30 s, instead of vanishing. A real leave is announced at once.
 - **Arrows to rivals:** a chevron at the screen's edge points at each car you can't see (nearest 7), with its distance in metres.

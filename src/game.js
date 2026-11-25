@@ -40,7 +40,9 @@ const TARGET_CARS = QUERY.has('bots') ? 1 + clamp(Number(QUERY.get('bots')) || 0
  *  driver; Chrome with several WebGPU tabs) falls back to WebGL 2 after a few seconds instead of
  *  leaving the loading screen stuck, on a fresh canvas (a canvas can't switch context types). */
 async function createDevice(canvas) {
-  const pref = new URLSearchParams(location.search).get('gpu') || store.get('renderer', 'auto');
+  // always automatic: WebGPU on desktops that have it, WebGL 2 elsewhere (no player setting; an old
+  // saved 'renderer' choice is ignored). ?gpu=webgl2|webgpu is for tests and the loader's RETRY.
+  const pref = new URLSearchParams(location.search).get('gpu') || 'auto';
   const order = pref === 'webgpu' ? [pc.DEVICETYPE_WEBGPU, pc.DEVICETYPE_WEBGL2] : pref === 'webgl2' ? [pc.DEVICETYPE_WEBGL2]
     : navigator.gpu && !isMobile() ? [pc.DEVICETYPE_WEBGPU, pc.DEVICETYPE_WEBGL2] : [pc.DEVICETYPE_WEBGL2];
   const opts = { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: isMobile() ? 'default' : 'high-performance' };
@@ -810,7 +812,6 @@ export async function startGame(loader) {
   statsEl.hidden = !showStats;
   $('optQuality').value = savedQ;
   // $('optGlyph').value = glyph; // ASCII view off
-  $('optRenderer').value = store.get('renderer', 'auto');
   let paused = false;
   // ≡ in the glade: chips light up the current choice
   const lightChips = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', (b.dataset.v ?? b.dataset.m) === String(v)); };
@@ -907,7 +908,6 @@ export async function startGame(loader) {
   $('optQuality').addEventListener('change', (e) => { store.set('quality', e.target.value); quality.setManual(e.target.value); if (e.target.value === 'auto') quality.maxLevel = tier; });
   // ASCII view off
   // $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
-  $('optRenderer').addEventListener('change', (e) => { store.set('renderer', e.target.value); location.reload(); });
   // sound: two sliders, saved by audio.js
   const vols = sfx.getVolumes();
   $('optMusic').value = Math.round(vols.music * 100); $('optSfx').value = Math.round(vols.sfx * 100);

@@ -166,6 +166,9 @@ export class Account {
       // carry over hats found before accounts existed
       try { for (const h of JSON.parse(ls.get('hats') || '[]')) if (HAT_IDS.includes(h) && !P.owned.hats.includes(h)) P.owned.hats.push(h); } catch { /* */ }
     }
+    // only what you own can be fitted (things worn while the shop was free go back to the starter kit)
+    P.owned ||= newOwned();
+    P.setup = cleanSetup(P.owned, P.setup);
     return P;
   }
   localSave() { ls.set('profile', JSON.stringify(this.profile)); }

@@ -13,40 +13,45 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   await sleep(900);
   await p.screenshot({ path: `${SHOTS}g-menu-${tag}.png` });
   const chip = await p.textContent('#acctChip');
-  ok(/GUEST/.test(chip) && /1,000/.test(chip), `${tag}: guest account with 1,000 coins (${chip.trim()})`);
+  ok(/GUEST/.test(chip) && /200/.test(chip), `${tag}: guest account with 200 coins (${chip.trim()})`);
   await p.click('#btnGarage');
   await sleep(1500);
   await p.screenshot({ path: `${SHOTS}g-rides-${tag}.png` });
   const cards = await p.$$eval('#gItems .g-card', (els) => els.length);
   ok(cards === 11, `${tag}: 11 rides in the garage (${cards})`);
-  // free for now: nothing is locked, there's no BUY button, one card is equipped
+  // the shop: the starter ride is yours, the other ten show their price; no BUY for what you own
   const look = await p.evaluate(() => ({ locked: document.querySelectorAll('#gItems .g-card.locked').length, eq: document.querySelectorAll('#gItems .g-card.eq').length, buy: !!document.getElementById('gAction').offsetParent, tabs: [...document.querySelectorAll('#gTabs button')].map((b) => b.textContent).join(',') }));
-  ok(look.locked === 0 && look.eq === 1 && !look.buy, `${tag}: every ride is free, no BUY button (${JSON.stringify(look)})`);
+  ok(look.locked === 10 && look.eq === 1 && !look.buy, `${tag}: 10 rides for sale, the Mudrunner owned, no BUY on it (${JSON.stringify(look)})`);
   ok(look.tabs === 'RIDE,WHEELS,ROOF,BUMPER,PAINT,HAT', `${tag}: tabs ${look.tabs}`);
   const fits = await p.evaluate(() => { const r = document.querySelector('.g-panel').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && document.documentElement.scrollWidth <= innerWidth; });
   ok(fits, `${tag}: the garage panel fits the screen`);
-  // tap a card: it's equipped and the preview wears it at once
+  // tap a locked card: the preview tries it on, BUY shows its price; buying equips it
   await p.click('#gItems .g-card[data-id="kart"]'); await sleep(900);
   ok((await p.evaluate(() => window.__hsg.cars.get('preview')?.vehicle)) === 'kart', `${tag}: preview shows the selection`);
-  const after = await p.evaluate(() => ({ coins: window.__hsg.account.coins, ride: window.__hsg.account.setup.ride }));
-  ok(after.ride === 'kart' && after.coins === 1000, `${tag}: equipped the Coffin Kart for free (coins still ${after.coins})`);
+  const buyTxt = await p.textContent('#gAction');
+  ok(/50/.test(buyTxt) && (await p.isEnabled('#gAction')), `${tag}: BUY shows the price (${buyTxt})`);
+  await p.click('#gAction'); await sleep(1200);
+  const after = await p.evaluate(() => ({ coins: window.__hsg.account.coins, ride: window.__hsg.account.setup.ride, eq: document.querySelectorAll('#gItems .g-card.eq').length }));
+  ok(after.ride === 'kart' && after.coins === 150 && !(await p.isVisible('#gAction')), `${tag}: bought and equipped the Coffin Kart for 50 (${JSON.stringify(after)})`);
   await p.click('#gTabs button[data-tab="wheels"]'); await sleep(300);
   await p.click('#gItems .g-card[data-id="spider"]'); await sleep(800);
   await p.screenshot({ path: `${SHOTS}g-spider-${tag}.png` });
   ok((await p.evaluate(() => window.__hsg.cars.get('preview')?.setup.wheels)) === 'spider', `${tag}: preview tries on the spider rig`);
+  ok(!(await p.isEnabled('#gAction')) && (await p.evaluate(() => window.__hsg.account.setup.wheels)) === 'tires', `${tag}: the spider rig (200) can't be bought with 150, and isn't fitted`);
   const wheelCards = await p.$$eval('#gItems .g-card', (els) => els.map((e) => e.dataset.id));
   ok(wheelCards.join() === 'tires,treads,pogo,spider,saw,hover,balloon,magnet,square', `${tag}: wheels list has no locked upgrade card (${wheelCards.join()})`);
   await p.click('#gItems .g-card[data-id="tires"]'); await sleep(500);
   const max = await p.$eval('#gTire', (r) => r.max);
-  ok(max === '250' && !(await p.isVisible('#gBigTires')), `${tag}: monster tire range unlocked (max ${max}%)`);
+  ok(max === '140' && (await p.isVisible('#gBigTires')), `${tag}: the normal tire range, with BIGGER for sale (max ${max}%)`);
   await p.$eval('#gTire', (r) => { r.value = '140'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); }); await sleep(800);
   await p.screenshot({ path: `${SHOTS}g-tires-${tag}.png` });
   ok((await p.evaluate(() => window.__hsg.account.setup.tire)) === 1.4, `${tag}: tire size saved at 140%`);
+  await p.click('#gTabs button[data-tab="bumper"]'); await sleep(300);
+  await p.click('#gItems .g-card[data-id="glove"]'); await sleep(600); await p.click('#gAction'); await sleep(1200);
   await p.click('#gTabs button[data-tab="roof"]'); await sleep(300);
   await p.click('#gItems .g-card[data-id="arm"]'); await sleep(800);
-  await p.click('#gTabs button[data-tab="bumper"]'); await sleep(300);
-  await p.click('#gItems .g-card[data-id="glove"]'); await sleep(800);
-  ok(await p.evaluate(() => window.__hsg.account.setup.roof === 'arm' && window.__hsg.account.setup.bumper === 'glove'), `${tag}: fitted the robot arm and boxing glove`);
+  const kit = await p.evaluate(() => ({ roof: window.__hsg.account.setup.roof, bumper: window.__hsg.account.setup.bumper, coins: window.__hsg.account.coins }));
+  ok(kit.bumper === 'glove' && kit.roof === 'none' && kit.coins === 50 && !(await p.isEnabled('#gAction')), `${tag}: bought the boxing glove (100); the robot arm (150) is out of reach (${JSON.stringify(kit)})`);
   await p.screenshot({ path: `${SHOTS}g-bumper-${tag}.png` });
   await p.click('#gTabs button[data-tab="paint"]'); await sleep(300);
   await p.click('#gItems .g-card[data-id="3"]'); await sleep(800);
@@ -59,13 +64,13 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   await p.click('#aGo'); await sleep(1200);
   await p.screenshot({ path: `${SHOTS}g-account-${tag}.png` });
   const reg = await p.evaluate(() => ({ name: window.__hsg.account.name, coins: window.__hsg.account.coins, ride: window.__hsg.account.setup.ride }));
-  ok(reg.name === name && reg.coins === 1000 && reg.ride === 'kart', `${tag}: registered and kept the guest's coins and kart (${JSON.stringify(reg)})`);
+  ok(reg.name === name && reg.coins === 50 && reg.ride === 'kart', `${tag}: registered and kept the guest's coins and kart (${JSON.stringify(reg)})`);
   await p.click('#aOut'); await sleep(1200);
   const out = await p.evaluate(() => ({ name: window.__hsg.account.name, coins: window.__hsg.account.coins }));
-  ok(out.name === null && out.coins === 1000, `${tag}: signed out to a fresh guest (${JSON.stringify(out)})`);
+  ok(out.name === null && out.coins === 200, `${tag}: signed out to a fresh guest (${JSON.stringify(out)})`);
   await p.click('#aTabLog'); await p.fill('#aName', name); await p.fill('#aPass', 'secret1'); await p.click('#aGo'); await sleep(1200);
   const back = await p.evaluate(() => ({ name: window.__hsg.account.name, coins: window.__hsg.account.coins, ride: window.__hsg.account.setup.ride, tire: window.__hsg.account.setup.tire }));
-  ok(back.name === name && back.ride === 'kart' && back.tire === 1.4, `${tag}: signed back in to the same garage (${JSON.stringify(back)})`);
+  ok(back.name === name && back.ride === 'kart' && back.tire === 1.4 && back.coins === 50, `${tag}: signed back in to the same garage (${JSON.stringify(back)})`);
   await p.click('#aBack'); await p.click('#gBack'); await sleep(500);
   ok(await p.isVisible('#btnPlay'), `${tag}: back to the menu`);
   // the drive uses the equipped setup
@@ -73,7 +78,7 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   await p.waitForFunction(() => window.__hsg && window.__hsg.me, null, { timeout: 15000 });
   await sleep(1500);
   const me = await p.evaluate(() => ({ ride: window.__hsg.me.vehicle, tire: window.__hsg.me.setup.tire, roof: window.__hsg.me.setup.roof, bumper: window.__hsg.me.setup.bumper }));
-  ok(me.ride === 'kart' && me.tire === 1.4 && me.roof === 'arm' && me.bumper === 'glove', `${tag}: PLAY drives the equipped kart, 140% tires, arm + glove`);
+  ok(me.ride === 'kart' && me.tire === 1.4 && me.roof === 'none' && me.bumper === 'glove', `${tag}: PLAY drives the equipped kart, 140% tires and the glove (${JSON.stringify(me)})`);
   await p.screenshot({ path: `${SHOTS}g-drive-${tag}.png` });
   ok(errors.length === 0, `${tag}: no page errors ${errors.slice(0, 2).join(' | ')}`);
   await ctx.close();

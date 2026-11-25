@@ -5,16 +5,16 @@ const browser = await launch({ webgpu: true });
 const ok = (c, m) => console.log(c ? 'PASS' : 'FAIL', m);
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
 const p = await ctx.newPage();
-const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error' && !/powerPreference/.test(m.text())) errs.push(m.text()); });
 await p.goto(`${BASE}/?gpu=webgl2`); await p.waitForSelector('#menu:not([hidden])'); await sleep(800);
 await p.click('#btnGarage'); await sleep(600);
 const shots = [['rides', 'mudrunner'], ['rides', 'bus'], ['rides', 'roller'], ['rides', 'tub'], ['wheels', 'spider'], ['wheels', 'pogo'], ['wheels', 'treads'], ['wheels', 'hover'], ['roof', 'hands'], ['roof', 'balloon'], ['roof', 'ball'], ['bumper', 'glove']];
 for (const [tab, id] of shots) { await p.click(`#gTabs button[data-tab="${tab}"]`); await p.click(`#gItems .g-card[data-id="${id}"]`); await sleep(1100); await p.screenshot({ path: `${SHOTS}col-${id}.png`, clip: { x: 300, y: 120, width: 680, height: 380 } }); }
 // the PAINT tab: pick Teal, the preview and the drive wear it, and another player sees it
 await p.click('#gTabs button[data-tab="paint"]'); await sleep(300);
-const swatches = await p.$$eval('#gItems .g-card .sw', (e) => e.length);
+const swatches = await p.$$eval('#gItems .g-card.sw', (e) => e.length); // (tap to equip: the card is the swatch)
 ok(swatches === 9, `PAINT tab shows 9 swatches (${swatches})`);
-await p.click('#gItems .g-card[data-id="4"]'); await sleep(400); await p.click('#gAction'); await sleep(800);
+await p.click('#gItems .g-card[data-id="4"]'); await sleep(1200);
 ok(await p.evaluate(() => window.__hsg.account.setup.paint === 4 && window.__hsg.cars.get('preview').setup.paint === 4), 'Teal is equipped and on the preview');
 await p.screenshot({ path: `${SHOTS}col-paint.png` });
 await p.click('#gBack');

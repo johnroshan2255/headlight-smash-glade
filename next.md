@@ -15,7 +15,7 @@ _Last session: 2026-11-25 (launch prep for CrazyGames). Everything up to the map
   - Coin earning is rate-capped per minute.
   - The client side is `src/account.js`. With no server (the itch build) it falls back to localStorage.
 - **Catalog:** `src/catalog.js` is shared by the game and the server: prices, coin rewards, setups.
-  - **`FREE_FOR_NOW = true`:** everything is free, at your request. The real prices are kept in the file for later.
+  - **The shop is on** (2026-11-25, `FREE_FOR_NOW = false`): cheap prices (50–300), 200 starting coins. Items worn while it was free go back to the starter kit unless bought.
 - **The garage:** `src/garage.js` plus the `#garageUI` / `#acctUI` panels in index.html.
   - The live preview is a real car in the scene (`game.preview(setup)`).
   - It opens from the menu (GARAGE) or from ≡ in-game (applies straight away).
@@ -174,10 +174,7 @@ All of these pass:
   - the Hands' grab reach (4.6 m) and the 6 s hold limit
   - tornado strength
 - **Hats moved:** the 12 hats now sit on generated stunt spots (`HAT_SPOTS` in `gen.js`). Check each is reachable.
-- **Turning prices back on:**
-  - Set `FREE_FOR_NOW = false`.
-  - Rebalance the prices and `EARN` values.
-  - Think about a daily bonus.
+- **Shop balance:** watch whether 50–300 prices against `EARN` feel right after launch. Think about a daily bonus.
 - **Ideas from the list not built yet:**
   - fuel tankers
   - the steam-roller grinding boulders to gravel

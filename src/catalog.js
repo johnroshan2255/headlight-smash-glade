@@ -1,56 +1,56 @@
 // What can be bought and earned. Shared by the game and the server (no engine imports here), so
 // prices and rules are the same on both sides. The server is the judge of coins and ownership.
 
-export const START_COINS = 1000;
+export const START_COINS = 200; // enough for a first ride or gadget; the rest is earned by playing
 
-/** Everything in the garage is free while this is on (the prices below are kept for later).
- *  Read by both the game and the server: flip it to false to turn the shop back on. */
-export const FREE_FOR_NOW = true;
+/** Everything in the garage is free while this is on. Read by both the game and the server.
+ *  Off: the shop sells at the prices below (kept low, 50-300 coins, so everyone can afford things). */
+export const FREE_FOR_NOW = false;
 
 /** rides: chassis prices (the Mudrunner is the free starter) */
 export const RIDES = {
-  mudrunner: 0, kart: 700, tub: 900, trike: 1100, barrow: 1300, tractor: 1500,
-  monster: 1900, hearse: 2200, dozer: 2500, roller: 2800, bus: 3200,
+  mudrunner: 0, kart: 50, tub: 100, trike: 100, barrow: 150, tractor: 150,
+  monster: 200, hearse: 200, dozer: 250, roller: 300, bus: 300,
 };
 
 /** what's under the car: how it moves */
 export const WHEELS = {
   tires: { name: 'Rubber Tires', price: 0, blurb: 'Good old rubber. Use the slider to resize them.' },
-  treads: { name: 'Centipede Treads', price: 1000, blurb: 'Long flexible tracks. Insane grip on steep climbs.' },
-  pogo: { name: 'Pogo Coils', price: 1200, blurb: 'Bounces in huge rhythmic leaps. Land on rivals to crush them.' },
-  spider: { name: 'Spider Rig', price: 1500, blurb: 'Eight mechanical legs. Crawls up cliffs, steps over logs.' },
-  saw: { name: 'Sawblade Wheels', price: 1800, blurb: 'Spinning buzzsaws. Slice trees and rival bumpers on contact.' },
-  hover: { name: 'Hover Thrusters', price: 2500, blurb: 'Floats a metre up on amber jets. Glides over ponds; brakes badly.' },
-  balloon: { name: 'Balloon Tires', price: 900, blurb: 'Huge, soft and bouncy. They float on ponds, and pop on a big hit: limp home on the rims.' },
-  magnet: { name: 'Magnet Wheels', price: 1600, blurb: 'Cling to cars, barrels and rocks. Drive right over rivals and ride on their roofs.' },
-  square: { name: 'Square Wheels', price: 500, blurb: 'Wooden blocks. Thump-thump on the flat, but the corners bite into rocks and ruins.' },
+  treads: { name: 'Centipede Treads', price: 100, blurb: 'Long flexible tracks. Insane grip on steep climbs.' },
+  pogo: { name: 'Pogo Coils', price: 150, blurb: 'Bounces in huge rhythmic leaps. Land on rivals to crush them.' },
+  spider: { name: 'Spider Rig', price: 200, blurb: 'Eight mechanical legs. Crawls up cliffs, steps over logs.' },
+  saw: { name: 'Sawblade Wheels', price: 200, blurb: 'Spinning buzzsaws. Slice trees and rival bumpers on contact.' },
+  hover: { name: 'Hover Thrusters', price: 250, blurb: 'Floats a metre up on amber jets. Glides over ponds; brakes badly.' },
+  balloon: { name: 'Balloon Tires', price: 100, blurb: 'Huge, soft and bouncy. They float on ponds, and pop on a big hit: limp home on the rims.' },
+  magnet: { name: 'Magnet Wheels', price: 150, blurb: 'Cling to cars, barrels and rocks. Drive right over rivals and ride on their roofs.' },
+  square: { name: 'Square Wheels', price: 50, blurb: 'Wooden blocks. Thump-thump on the flat, but the corners bite into rocks and ruins.' },
 };
 
 /** roof slot: an active gadget fired with E (or the ROOF button) */
 export const ROOF = {
   none: { name: 'Nothing', price: 0, blurb: 'A clean roof.' },
-  balloon: { name: 'Party Balloon', price: 900, blurb: 'Mid-air: pop it open and glide. Tap again to drop a bomb.' },
-  mortar: { name: 'Firework Mortar', price: 1300, blurb: 'Four crooked rockets up into the fog. They rain down ahead.' },
-  ball: { name: 'Wrecking Ball', price: 1400, blurb: 'A spiked iron lantern on a chain. Swing it into anyone near.' },
-  arm: { name: 'Robot Arm', price: 1500, blurb: 'Grabs barrels, boulders and logs as you pass. Tap to throw.' },
-  magnet: { name: 'Magnet Coil', price: 1600, blurb: 'Hold to pull barrels and light cars in. Release to blast them out.' },
-  hands: { name: 'Grabby Hands', price: 1800, blurb: 'Grab rivals, bombs and barrels and throw them. Two pairs on one car tear it in two!' },
+  balloon: { name: 'Party Balloon', price: 100, blurb: 'Mid-air: pop it open and glide. Tap again to drop a bomb.' },
+  mortar: { name: 'Firework Mortar', price: 150, blurb: 'Four crooked rockets up into the fog. They rain down ahead.' },
+  ball: { name: 'Wrecking Ball', price: 150, blurb: 'A spiked iron lantern on a chain. Swing it into anyone near.' },
+  arm: { name: 'Robot Arm', price: 150, blurb: 'Grabs barrels, boulders and logs as you pass. Tap to throw.' },
+  magnet: { name: 'Magnet Coil', price: 200, blurb: 'Hold to pull barrels and light cars in. Release to blast them out.' },
+  hands: { name: 'Grabby Hands', price: 250, blurb: 'Grab rivals, bombs and barrels and throw them. Two pairs on one car tear it in two!' },
 };
 
 /** bumper slot: an active gadget fired with Q (or the BUMPER button) */
 export const BUMPER = {
   none: { name: 'Nothing', price: 0, blurb: 'Just a bumper.' },
-  eject: { name: 'Ejector Seat', price: 600, blurb: 'Fly out on a parachute; your empty car rams on and blows up.' },
-  catcher: { name: 'Cow-Catcher', price: 700, blurb: 'Always on. Scoops cars and barrels up and over your roof.' },
-  glove: { name: 'Boxing Glove', price: 900, blurb: 'A spring-loaded fist. Punch rivals into barrels and off hills.' },
-  flame: { name: 'Ember Jets', price: 1200, blurb: 'Short amber fire from both sides. Lights barrels, scorches rivals.' },
-  harpoon: { name: 'Grapple Harpoon', price: 1400, blurb: 'Hook trees, ground or cars. Hold to reel in, tap to let go.' },
-  smoke: { name: 'Smoke Bomb', price: 800, blurb: 'A thick bank of fog behind you. Anyone inside it vanishes, and bots lose your trail.' },
-  oil: { name: 'Oil Slick', price: 1000, blurb: 'Dumps a black puddle behind you. Whoever drives through it spins out.' },
+  eject: { name: 'Ejector Seat', price: 50, blurb: 'Fly out on a parachute; your empty car rams on and blows up.' },
+  catcher: { name: 'Cow-Catcher', price: 50, blurb: 'Always on. Scoops cars and barrels up and over your roof.' },
+  glove: { name: 'Boxing Glove', price: 100, blurb: 'A spring-loaded fist. Punch rivals into barrels and off hills.' },
+  flame: { name: 'Ember Jets', price: 150, blurb: 'Short amber fire from both sides. Lights barrels, scorches rivals.' },
+  harpoon: { name: 'Grapple Harpoon', price: 150, blurb: 'Hook trees, ground or cars. Hold to reel in, tap to let go.' },
+  smoke: { name: 'Smoke Bomb', price: 100, blurb: 'A thick bank of fog behind you. Anyone inside it vanishes, and bots lose your trail.' },
+  oil: { name: 'Oil Slick', price: 100, blurb: 'Dumps a black puddle behind you. Whoever drives through it spins out.' },
 };
 
 export const UPGRADES = {
-  monster: { name: 'Monster-Scale Tires', price: 800, blurb: 'Unlocks the tire slider from 25% all the way to 250%.' },
+  monster: { name: 'Monster-Scale Tires', price: 100, blurb: 'Unlocks the tire slider from 25% all the way to 250%.' },
 };
 
 /** muted paints: dusty, low-saturation colours that sit in the fog (index = paint id) */
@@ -73,7 +73,7 @@ export const MAP_LIST = [
 export const MAP_IDS = ['endless', ...MAP_LIST.map((m) => m.id)];
 export const mapName = (id) => (MAP_LIST.find((m) => m.id === id) || { name: 'Endless Glade' }).name;
 
-export const HAT_PRICE = 400;
+export const HAT_PRICE = 50;
 export const HAT_IDS = ['straw', 'bucket', 'crown', 'antlers', 'cone', 'witch', 'tophat', 'propeller', 'chef', 'pirate', 'viking', 'party', 'halo'];
 
 /** tire size range, as a scale on the vehicle's own wheels */

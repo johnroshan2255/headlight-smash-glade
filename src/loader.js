@@ -199,7 +199,7 @@ async function boot() {
   let typedName = false;
   nameEl.addEventListener('input', () => { typedName = true; });
   const usePortalName = (n) => { game.account.portalName = n; if (n && !typedName && !q.get('name')) nameEl.value = n; game.account.emit(); };
-  portal.portalUser().then(usePortalName);
+  const portalName = portal.portalUser().then(usePortalName);
   portal.onPortalUser(usePortalName);
 
   // ---------------------------------------------------------------- the lobby: JOIN or CREATE
@@ -308,6 +308,8 @@ async function boot() {
   // Opened from a friend's invite link: straight into their room (once: if that room has closed and
   // the page reloads, don't try it again). "Play with friends" (instant multiplayer): a new private room.
   const invited = portal.inviteRoom();
+  // join under the CrazyGames name, not a stand-in (at most 3 s wait for it)
+  if (invited || portal.instantMultiplayer()) await Promise.race([portalName, new Promise((r) => setTimeout(r, 3000))]);
   const tried = (() => { try { return sessionStorage.getItem('hsg.invited'); } catch { return null; } })();
   const joinFromInvite = (code) => {
     if (!code || begun || inRoom || joining || !game.online) return;

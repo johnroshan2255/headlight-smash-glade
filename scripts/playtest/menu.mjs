@@ -50,11 +50,12 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
     // the garage from in-game settings: swap the ride mid-drive
     await p.keyboard.press('Escape');
     await p.click('#btnGarageIn'); await sleep(600);
-    await p.click('#gItems .g-card[data-id="monster"]'); await sleep(900);
+    await p.click('#gItems .g-card[data-id="monster"]'); await sleep(600);
+    await p.click('#gAction'); await sleep(1200); // the shop: a new player's 200 coins buy the Monster Hopper
     await p.click('#gBack'); await sleep(1500);
     const v = await p.evaluate(() => window.__hsg.me.vehicle);
     const vOnHost = await host.page.evaluate((id) => window.__hsg.cars.get(id)?.vehicle, await p.evaluate(() => window.__hsg.me.id));
-    ok(v === 'monster' && vOnHost === 'monster', `in-game garage swaps the ride and the host sees it (${v}, host sees ${vOnHost})`);
+    ok(v === 'monster' && vOnHost === 'monster', `in-game garage buys and swaps the ride and the host sees it (${v}, host sees ${vOnHost})`);
   }
   if (tag === 'phone') {
     await p.click('#btnBack');

@@ -32,9 +32,14 @@ export async function open(browser, { query = 'autostart&mode=solo&veh=mudrunner
   const errors = [];
   page.on('crash', () => errors.push('PAGE CRASHED'));
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
+  // (driver chatter isn't a game error: Windows Chrome's powerPreference notice, GL performance hints)
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/powerPreference option is currently ignored|GL Driver Message/.test(m.text())) errors.push(`${m.type()}: ${m.text()}`); });
   await page.goto(`${BASE}/?${query}`);
   await page.waitForFunction(() => window.__hsg && window.__hsg.me, null, { timeout: 30000 });
+  // ?veh= only works for rides you own (the shop is on), and a test's fresh guest owns just the
+  // Mudrunner: put the test in the ride it asked for through the test hook
+  const veh = new URLSearchParams(query).get('veh');
+  if (veh) await page.evaluate((v) => { const g = window.__hsg; if (g.me.vehicle !== v) g.applySetup({ ...g.account.setup, ride: v }); }, veh);
   return { page, errors, ctx };
 }
 
