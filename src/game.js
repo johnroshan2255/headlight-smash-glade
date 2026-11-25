@@ -8,7 +8,7 @@ import { QualityManager, LEVELS, detectTier, isMobile } from './quality.js';
 import { setupFullscreen, enterFullscreen } from './fullscreen.js';
 import { GADGETS, GADGET_KEYS, GADGET_SECONDS, HATS } from './layout.js';
 import { safeAt, setMap, mapInfo, mapBounds, mapId } from './gen.js';
-import { Account } from './account.js';
+import { Account, useStorage } from './account.js';
 import { packSetup, unpackSetup, WHEELS, ROOF, BUMPER, DEFAULT_SETUP, HAT_IDS, MAP_LIST, mapName } from './catalog.js';
 import { NHL, NFL, blit2dMaterial, glowMaterial } from './sil.js';
 import { MeshBuilder, rgba } from './meshes.js';
@@ -534,7 +534,9 @@ export async function startGame(loader) {
     if (c.local) net.send('honk', { id: c.id });
   }
 
-  // on CrazyGames there's no sign-in of our own (their rules): progress stays in this browser
+  // on CrazyGames there's no sign-in of our own (their rules): progress is kept by their Data Module
+  // (in the browser for guests, on their account for signed-in players), else in this browser
+  if (portal.ON_CRAZY) useStorage(portal.portalStorage());
   await account.init(portal.ON_CRAZY ? null : serverUrl);
   const sandbox = new Sandbox({ app, layer, physics, terrain, fx, net, hooks: {
     boom: applyBoom,

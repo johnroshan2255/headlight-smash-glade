@@ -152,7 +152,8 @@ All of these pass:
   - Done: `src/portal.js` plus `npm run crazygames` (see the README). Checked against the SDK in `local` mode: gameplay start/stop, muteAudio, invite link into a room, no fullscreen button, no sign-in.
   - Build with `VITE_SERVER_URL=wss://<railway app> npm run crazygames` and upload `release/fogbash-crazygames.zip`.
   - Railway: keep `CORS_ORIGINS` unset, or allow the CrazyGames origins. Give `HSG_DATA` a volume, or accounts reset on every deploy.
-  - Not done: ads (Basic Launch has none), the Data module (progress stays in localStorage), instant multiplayer is untested on the real portal.
+  - Progress uses CrazyGames' Data Module, so pick "Yes, using the Data Module" on the submission form.
+  - Not done: ads (Basic Launch has none). Instant multiplayer is untested on the real portal.
 - **Launch-prep fixes (2026-11-25):**
   - F toggled fullscreen as well as firing the crate power-up. F is now only the power-up.
   - Esc on the title menu or in a room's lobby opened the in-game ≡ card. It now opens only while driving; P opens it too.

@@ -25,7 +25,9 @@ VITE_SERVER_URL=wss://<railway-app> npm run crazygames   # CrazyGames zip: relea
 - **gameplayStart / gameplayStop** follow actual driving. They stop for the ≡ menu, the garage, the room's lobby and the results.
 - **muteAudio** is respected (`sfx.setMuted`).
 - **No custom fullscreen** (button, touch re-entry): CrazyGames provides it.
-- **No name/password sign-in:** progress stays on the device, and a signed-in CrazyGames player's name is used.
+- **No name/password sign-in.** A signed-in CrazyGames player's name is used instead.
+- **Progress (coins, purchases, garage)** is saved with CrazyGames' **Data Module** (`portalStorage()` in `portal.js`, used by `account.js`). It stays in the browser for guests and follows signed-in players to every device. A profile already saved in the browser moves over the first time.
+- **On the submission form:** pick "Yes, using the Data Module" for progress save. Otherwise the module is off and the game falls back to `localStorage`.
 - **Multiplayer:**
   - The room code button copies an invite link (`?room=` in `czy_invite_params`).
   - Opening an invite joins that room, and instant multiplayer creates a private room.

@@ -52,6 +52,20 @@ if (ON_CRAZY) window.__portal = () => ({ ...calls, playing, muted, ready: !!sdk 
 /** the portal wants the game silent (fn gets true/false now and on every change) */
 export function onMute(fn) { muteFns.add(fn); fn(muted); }
 
+/** CrazyGames' Data Module as a small key/value store for progress ({ get, set, remove }), or null
+ *  outside CrazyGames / when the module is off. It keeps guest progress in the browser and follows a
+ *  signed-in player to every device. (It must be switched on in the submission: "Yes, using the Data
+ *  Module"; otherwise every call throws dataModuleDisabled and we stay on localStorage.) */
+export function portalStorage() {
+  if (!sdk || !sdk.data) return null;
+  try { sdk.data.getItem('hsg.probe'); } catch (e) { console.warn('[portal] data module off:', e?.message || e); return null; }
+  return {
+    get: (k) => { try { return sdk.data.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { sdk.data.setItem(k, String(v)); } catch (e) { console.warn('[portal] save failed', e?.message || e); } },
+    remove: (k) => { try { sdk.data.removeItem(k); } catch { /* */ } },
+  };
+}
+
 /** the CrazyGames player's name, or null for a guest / outside CrazyGames */
 export async function portalUser() {
   if (!sdk) return null;

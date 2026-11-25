@@ -3,10 +3,23 @@
 // it keeps the same profile in this browser's storage, so the garage works offline too.
 import { START_COINS, CATEGORIES, EARN, DEFAULT_SETUP, HAT_IDS, newOwned, owns, cleanSetup } from './catalog.js';
 
+// where the profile lives: this browser's storage, or a portal's save system (CrazyGames' Data
+// Module, set with useStorage) that the same keys go to instead
+let portalStore = null;
 const ls = {
-  get(k, d = null) { try { return localStorage.getItem(`hsg.${k}`) ?? d; } catch { return d; } },
-  set(k, v) { try { if (v === null) localStorage.removeItem(`hsg.${k}`); else localStorage.setItem(`hsg.${k}`, v); } catch { /* private mode */ } },
+  get(k, d = null) { if (portalStore) return portalStore.get(`hsg.${k}`) ?? d; try { return localStorage.getItem(`hsg.${k}`) ?? d; } catch { return d; } },
+  set(k, v) { if (portalStore) { if (v === null) portalStore.remove(`hsg.${k}`); else portalStore.set(`hsg.${k}`, v); return; } try { if (v === null) localStorage.removeItem(`hsg.${k}`); else localStorage.setItem(`hsg.${k}`, v); } catch { /* private mode */ } },
 };
+/** keep progress in a portal's store; a profile already saved in this browser moves over the first time */
+export function useStorage(store) {
+  if (!store) return;
+  portalStore = store;
+  for (const k of ['profile', 'hats']) {
+    if (store.get(`hsg.${k}`) != null) continue;
+    let old = null; try { old = localStorage.getItem(`hsg.${k}`); } catch { /* */ }
+    if (old != null) store.set(`hsg.${k}`, old);
+  }
+}
 
 export class Account {
   constructor() {
