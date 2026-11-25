@@ -238,8 +238,10 @@ export class Physics {
     // resting on top of another body counts as standing on something (so a buggy can hop off a log)
     if (b) { if (ny > 0.5) a.grounded = 3; else if (ny < -0.5) b.grounded = 3; }
     const speed = -vn;
-    if (speed > a.lastImpact) { a.lastImpact = speed; a.lastHitBy = b; }
-    if (b && speed > b.lastImpact) { b.lastImpact = speed; b.lastHitBy = a; }
+    // bumping into a harmless body (a skeleton, a bone, a pumpkin) is not a crash: no impact damage
+    // (a thrown one still hurts, through the sandbox's thrownHit, credited to whoever threw it)
+    if (speed > a.lastImpact && !(b && b.harmless)) { a.lastImpact = speed; a.lastHitBy = b; }
+    if (b && speed > b.lastImpact && !a.harmless) { b.lastImpact = speed; b.lastHitBy = a; }
     if (speed > 1.5) { if (a.onContact) a.onContact(b, speed); if (b && b.onContact) b.onContact(a, speed); }
   }
 

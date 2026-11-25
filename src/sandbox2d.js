@@ -164,6 +164,7 @@ export class Sandbox {
   addProp(P, Z = null) {
     this.dyn.set(P.id, P);
     P.body.prop = P;
+    if (P.kind === 'skeleton' || P.kind === 'bone' || P.kind === 'pumpkin') P.body.harmless = true; // bump into them freely
     P.body.kinematic = !this.isHost || !!P.held;
     P.body.onContact = (other, sp) => this.propContact(P, other, sp);
     this.physics.add(P.body);
