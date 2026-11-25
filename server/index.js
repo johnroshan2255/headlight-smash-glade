@@ -13,7 +13,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server, Room, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { api } from './accounts.js';
+import { api, flush } from './accounts.js';
 import { MAP_IDS } from '../src/catalog.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
@@ -233,3 +233,6 @@ httpServer.on('request', (req, res) => {
   else serveStatic(req, res);
 });
 console.log(`\n  HEADLIGHT: SMASH GLADE  ->  http://localhost:${PORT}  (rooms on the same port)\n`);
+
+// hosts like Railway stop the old copy with SIGTERM on every deploy: save the accounts first
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { try { flush(); } catch (e) { console.error('save failed', e); } process.exit(0); });

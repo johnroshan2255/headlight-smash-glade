@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "node server/index.js",
     "preview": "vite preview",
     "itch": "vite build && node scripts/package-itch.mjs",
     "server": "node server/index.js",
@@ -21,5 +22,8 @@
     "vite": "^8.3.8"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
 }
