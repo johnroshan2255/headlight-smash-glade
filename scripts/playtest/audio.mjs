@@ -50,6 +50,14 @@ const before = (await A()).played.honk || 0;
 for (const ride of rides) { await p.evaluate((r) => window.__hsg.applySetup({ ...window.__hsg.account.setup, ride: r }), ride); await sleep(500); ok((await p.evaluate(() => window.__hsg.me.vehicle)) === ride, `${ride}: switched`); await p.keyboard.press('KeyH'); await sleep(700); }
 a = await A();
 ok((a.played.honk || 0) - before >= rides.length && Object.keys(a.fallback).length === 0, `each of the ${rides.length} rides honks with its own recorded horn (${(a.played.honk || 0) - before} honks, fallbacks ${JSON.stringify(a.fallback)})`);
+// each map has its own music and ambience
+const MAPMUSIC = { graveyard: ['music-graveyard.mp3', 'amb-crickets.mp3'], hallow: ['music-hallow.mp3', 'amb-crickets.mp3'], crater: ['music-moon.mp3', 'amb-space.mp3'], bog: ['music-bog.mp3', 'amb-swamp.mp3'], quarry: ['music-quarry.mp3', 'amb-machine.mp3'], glade: [/music-glade\d\.mp3/, null] };
+for (const [m, [track, bedFile]] of Object.entries(MAPMUSIC)) {
+  await p.evaluate((m) => window.__hsg.applyMap(m), m); await sleep(2500);
+  a = await A();
+  const tOk = track instanceof RegExp ? track.test(a.track) : a.track === track;
+  ok(tOk && a.playing && a.scene === m && (a.bed || null) === bedFile, `${m}: its own music (${a.track}) and ambience (${a.bed || 'just wind'})`);
+}
 // volume sliders
 await p.keyboard.press('Escape'); await sleep(300);
 await p.$eval('#optMusic', (r) => { r.value = '20'; r.dispatchEvent(new Event('input')); });

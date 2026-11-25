@@ -3,6 +3,7 @@
 // Nothing here imports PlayCanvas, so this file is a few KB and runs before the engine arrives.
 import { setupGarage } from './garage.js';
 import * as sfx from './audio.js';
+import { MAP_LIST, mapName } from './catalog.js';
 
 const $ = (id) => document.getElementById(id);
 // colour or monochrome title card, matching the player's saved choice
@@ -159,6 +160,14 @@ async function boot() {
   els.menu.hidden = false;
   els.play.focus({ preventScroll: true });
   setTimeout(sfx.prefetch, 400); // sound effects download while the menu is up (music streams later)
+  // the solo map: endless, or one of the room arenas (the world behind the menu switches with it)
+  const SOLO_MAPS = ['endless', ...MAP_LIST.map((m) => m.id)];
+  let soloMap = SOLO_MAPS.includes(ls.get('soloMap', 'endless')) ? ls.get('soloMap', 'endless') : 'endless';
+  const showSoloMap = () => { $('mapNameMenu').textContent = mapName(soloMap).toUpperCase(); ls.set('soloMap', soloMap); game.previewMap(soloMap); };
+  const stepMap = (d) => { soloMap = SOLO_MAPS[(SOLO_MAPS.indexOf(soloMap) + d + SOLO_MAPS.length) % SOLO_MAPS.length]; showSoloMap(); };
+  $('mapPrev').onclick = () => stepMap(-1); $('mapNext').onclick = () => stepMap(1);
+  $('soloMap').hidden = false;
+  showSoloMap();
   // why we're back here (the host left the room, the connection dropped)
   try { const n = sessionStorage.getItem('hsg.notice'); if (n) { sessionStorage.removeItem('hsg.notice'); els.tip.textContent = n; els.tip.classList.add('notice'); } } catch { /* */ }
 
@@ -188,7 +197,7 @@ async function boot() {
   // CREATE: a room of your own (public = listed, private = code only), its bots and match length.
   // Either way you wait in the room's lobby until the host presses START.
   const gladesEl = $('glades');
-  let pollTimer = 0, lobbyMode = 'join', newBots = 0, newTime = 8, newPrivate = false, joining = false;
+  let pollTimer = 0, lobbyMode = 'join', newBots = 0, newTime = 8, newPrivate = false, newMap = 'glade', joining = false;
   const syncRoom = () => { roomEl.value = roomEl.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); $('btnJoin').disabled = !game.online || roomEl.value.length < 3 || joining; };
   const freshCode = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; return Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join(''); };
   const setLobbyMode = (m) => {
@@ -203,6 +212,7 @@ async function boot() {
   chipGroup('botChips', 'b', (v) => (newBots = v));
   chipGroup('timeChips', 't', (v) => (newTime = v));
   chipGroup('visChips', 'v', (v) => (newPrivate = !!v));
+  for (const b of $('mapChips').querySelectorAll('button')) b.onclick = () => { newMap = b.dataset.m; for (const o of $('mapChips').querySelectorAll('button')) o.classList.toggle('on', o === b); $('mapBlurb').textContent = MAP_LIST.find((m) => m.id === newMap).blurb; };
   const esc = (t) => String(t).replace(/[<>&"]/g, '');
   async function pollRooms() {
     let list = null;
@@ -212,7 +222,7 @@ async function boot() {
     gladesEl.innerHTML = !list.length ? '<p class="l-empty">No public rooms right now. CREATE one, or type a code.</p>' : list.slice(0, 6).map((r) => {
       const full = r.players >= r.max, left = Math.ceil((r.left || 0) / 60000);
       const status = full ? 'full' : r.phase === 'playing' ? `playing · ${left} min left` : r.phase === 'results' ? 'results' : 'waiting';
-      return `<button data-code="${esc(r.code)}" ${full ? 'disabled' : ''}><b>${esc(r.host || r.code)}</b><span>${r.players}/${r.max} · ${status}</span></button>`;
+      return `<button data-code="${esc(r.code)}" ${full ? 'disabled' : ''}><b>${esc(r.host || r.code)}<small>${esc(mapName(r.map))}</small></b><span>${r.players}/${r.max} · ${status}</span></button>`;
     }).join('');
     for (const b of gladesEl.querySelectorAll('button')) b.onclick = () => joinRoom('join', b.dataset.code);
   }
@@ -226,7 +236,7 @@ async function boot() {
     const name = nameEl.value.trim().replace(/[<>&]/g, '') || game.account.name || 'Driver';
     ls.set('name', name);
     $('lobbyMsg').hidden = true;
-    const r = await game.joinRoom({ how, code, name, private: newPrivate, bots: newBots, time: newTime }, enterGame, () => { els.boot.classList.add('away'); G.openGarage(false); });
+    const r = await game.joinRoom({ how, code, name, private: newPrivate, bots: newBots, time: newTime, map: newMap }, enterGame, () => { els.boot.classList.add('away'); G.openGarage(false); });
     joining = false; syncRoom();
     if (r.error) { $('lobbyMsg').textContent = r.error; $('lobbyMsg').hidden = false; return; }
     if (how === 'join') ls.set('room', code);
@@ -238,6 +248,7 @@ async function boot() {
 
   const showLobby = (open) => {
     els.menu.hidden = open;
+    $('soloMap').hidden = open;
     els.lobby.hidden = !open;
     els.boot.classList.toggle('lobbying', open);
     clearInterval(pollTimer);
@@ -265,7 +276,7 @@ async function boot() {
     ls.set('name', name);
     $('acctChip').hidden = true;
     // solo, or (online) the room we're already in; ?autostart joins/makes q.room and drives straight in
-    game.begin(e, { name, mode, code: roomEl.value, bots: -1 }); // the gesture lets us go fullscreen
+    game.begin(e, { name, mode, code: roomEl.value, bots: -1, map: mode === 'solo' ? soloMap : undefined }); // the gesture lets us go fullscreen
     els.boot.classList.add('fade');
     setTimeout(() => els.boot.remove(), 650);
     window.removeEventListener('keydown', keys);

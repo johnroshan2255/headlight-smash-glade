@@ -13,6 +13,25 @@ MUSIC
   music-glade2.mp3  "Dark Forest Theme" by cynicmusic
                     https://opengameart.org/content/dark-forest-theme
 
+  music-graveyard.mp3  "Moonlit Lullaby for the Lost" by Tsorthan (The Graveyard)
+                    https://opengameart.org/content/moonlit-lullaby-for-the-lost
+  music-hallow.mp3  "A Wonderful Nightmare" by SpiderDave (Hallowe'en Hollow)
+                    https://opengameart.org/content/a-wonderful-nightmare
+  music-moon.mp3    "Observing The Star" by yd (Moon Crater)
+                    https://opengameart.org/content/another-space-background-track
+  music-quarry.mp3  "Factory ambiance" by yd (The Quarry)
+                    https://opengameart.org/content/factory-ambiance
+  music-bog.mp3     "Creepy Forest (F)" by Augmentality (The Bog)
+                    https://opengameart.org/content/creepy-forest-f
+
+AMBIENCE
+  amb-swamp.mp3     "Swamp Environment Audio" by LokiF       https://opengameart.org/content/swamp-environment-audio
+  amb-space.mp3     "Space Winds" by aquinn                  https://opengameart.org/content/space-winds
+  amb-machine.mp3   "Generator (loop)" by YCbCr              https://opengameart.org/content/generator-loop
+  amb-crickets.mp3  "Crickets Ambient Noise" by Wolfgang_    https://opengameart.org/content/crickets-ambient-noise-loopable
+  crow.mp3          "Crow caw" by zeroisnotnull              https://opengameart.org/content/crow-caw
+  crows.mp3         "Crows singing" by IgnasD                https://opengameart.org/content/crows-singing
+
 SOUND EFFECTS
   Kenney (www.kenney.nl): Impact Sounds, Sci-fi Sounds, Interface Sounds, RPG Audio, Music Jingles
     crunch*, bump*, shatter*, crack*, clang*, rock*  impact pack (metal, punch, plate, tin, glass, wood, mining, bell)

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { Server, Room, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { api } from './accounts.js';
+import { MAP_IDS } from '../src/catalog.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const PORT = Number(process.env.PORT || 2567);
@@ -32,9 +33,10 @@ class GladeRoom extends Room {
     //   private: hidden from the JOIN list (join by code)
     //   bots: how many bots the host adds (0..6); -1 = fill the empty seats (only the playtests use it)
     //   time: minutes per match (6, 8, 10 or 12): most smashes when the clock runs out wins
-    this.settings = { private: !!options.private, bots: GladeRoom.botCount(options.bots ?? 0), time: GladeRoom.matchMinutes(options.time) };
+    //   map: the arena (glade, crater, bog, quarry; 'endless' only for the playtests)
+    this.settings = { private: !!options.private, bots: GladeRoom.botCount(options.bots ?? 0), time: GladeRoom.matchMinutes(options.time), map: MAP_IDS.includes(options.map) ? options.map : options.autostart ? 'endless' : 'glade' };
     this.match = { n: 0, phase: 'lobby', over: true, endsAt: 0, nextAt: 0 };
-    this.setMetadata({ code: options.code || '', private: this.settings.private, bots: this.settings.bots, host: '', phase: 'lobby', time: this.settings.time, endsAt: 0 });
+    this.setMetadata({ code: options.code || '', private: this.settings.private, bots: this.settings.bots, host: '', phase: 'lobby', time: this.settings.time, endsAt: 0, map: this.settings.map });
     this.onMessage('*', (client, type, msg) => this.relay(client, String(type), msg || {}));
     this.autoStart = !!options.autostart; // the playtests' ?autostart: skip the lobby
   }
@@ -118,6 +120,7 @@ class GladeRoom extends Room {
       if (msg.private !== undefined && this.metadata.code) this.settings.private = !!msg.private;
       if (msg.time !== undefined) { this.settings.time = GladeRoom.matchMinutes(msg.time); this.setMetadata({ ...this.metadata, time: this.settings.time }); } // from the next match
       if (msg.restart && !this.match.over) this.endMatch(); // the host can call time early
+      if (msg.map !== undefined && MAP_IDS.includes(msg.map) && this.match.phase !== 'playing') { this.settings.map = msg.map; this.setMetadata({ ...this.metadata, map: msg.map }); } // only between matches
       this.setMetadata({ ...this.metadata, private: this.settings.private, bots: this.settings.bots });
       this.sendRoster();
       return;
@@ -211,7 +214,7 @@ async function listRooms(res) {
   let rooms = [];
   try { rooms = await matchMaker.query({ name: 'glade' }); } catch { /* none yet */ }
   // private rooms are never listed: you need the code
-  const list = rooms.filter((r) => r.metadata?.code && !r.metadata?.private && r.metadata?.host && (!r.locked || r.clients < r.maxClients)).map((r) => ({ code: r.metadata.code, host: r.metadata.host, players: r.clients, max: r.maxClients, bots: r.metadata.bots ?? 0, phase: r.metadata.phase || 'lobby', time: r.metadata.time || 8, left: r.metadata.phase === 'playing' ? Math.max(0, (r.metadata.endsAt || 0) - Date.now()) : 0 }));
+  const list = rooms.filter((r) => r.metadata?.code && !r.metadata?.private && r.metadata?.host && (!r.locked || r.clients < r.maxClients)).map((r) => ({ code: r.metadata.code, host: r.metadata.host, players: r.clients, max: r.maxClients, bots: r.metadata.bots ?? 0, phase: r.metadata.phase || 'lobby', time: r.metadata.time || 8, map: r.metadata.map || 'glade', left: r.metadata.phase === 'playing' ? Math.max(0, (r.metadata.endsAt || 0) - Date.now()) : 0 }));
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify(list));
 }

@@ -80,10 +80,10 @@ ok(Object.values(a.scores).every((v) => v === 0) && Object.values(b.scores).ever
 ok(Math.abs(a.left - b.left) <= 1 && a.left > 15, `a fresh clock on both (${a.clock} / ${b.clock})`);
 // the host changes the match length; guests can't
 await A.keyboard.press('Escape'); await sleep(300);
-await A.selectOption('#optTime', '12'); await sleep(800);
+await A.click('#optTime button[data-v="12"]'); await sleep(800);
 await A.keyboard.press('Escape');
 await B.keyboard.press('Escape'); await sleep(300);
-ok(await B.isDisabled('#optTime') && (await B.evaluate(() => window.__hsg.net.settings.time)) === 12, 'the host sets 12 minutes for the next match; the guest sees it but cannot change it');
+ok(await B.isDisabled('#optTime button[data-v="6"]') && (await B.evaluate(() => window.__hsg.net.settings.time)) === 12, 'the host sets 12 minutes for the next match; the guest sees it but cannot change it');
 await B.keyboard.press('Escape');
 ok(A.errors.length === 0 && B.errors.length === 0, `no page errors ${[...A.errors, ...B.errors].slice(0, 2).join(' | ')}`);
 console.log(`  (Alpha's coins after the win: ${coinsWin})`);

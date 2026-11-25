@@ -44,10 +44,12 @@
     <div class="rl-card">
       <header class="lobby-head"><button class="back" id="rlLeave">&#8249; LEAVE</button><h2 id="rlTitle">ROOM</h2><button class="rl-code" id="rlCode" title="Copy the code"></button></header>
       <p class="rl-status" id="rlStatus"></p>
+      <p class="rl-map" id="rlMapInfo"></p>
       <ul class="rl-players" id="rlPlayers"></ul>
       <div class="rl-row"><span class="lbl">COLOUR</span><div class="rl-colors" id="rlColors"></div></div>
       <p class="rl-teams" id="rlTeams"></p>
       <div class="rl-host" id="rlHost">
+        <div class="chips map-chips" id="rlMap"><span class="lbl">MAP</span><button data-m="glade">GLADE</button><button data-m="crater">MOON</button><button data-m="bog">BOG</button><button data-m="quarry">QUARRY</button><button data-m="graveyard">GRAVES</button><button data-m="hallow">HALLOW</button></div>
         <div class="chips" id="rlVis"><span class="lbl">ROOM</span><button data-v="0">PUBLIC</button><button data-v="1">PRIVATE</button></div>
         <div class="chips" id="rlBots"><span class="lbl">BOTS</span><button data-b="0">0</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="6">6</button></div>
         <div class="chips" id="rlTime"><span class="lbl">MINUTES</span><button data-t="6">6</button><button data-t="8">8</button><button data-t="10">10</button><button data-t="12">12</button></div>
@@ -70,6 +72,7 @@
   <pre id="stats" hidden></pre>
 
   <div id="tags" aria-hidden="true"></div>
+  <div id="pointers" aria-hidden="true"></div>
 
   <!-- Touch -->
   <div id="stick" hidden><div id="stickKnob"></div></div>
@@ -93,73 +96,38 @@
     </div>
   </div>
 
-  <!-- Settings -->
+  <!-- Settings (in the glade): the same compact card as the menus -->
   <div id="settings" hidden>
-    <div class="panel">
-      <h2>Settings</h2>
-      <button id="btnGarageIn" class="garageIn">GARAGE</button>
-      <div id="roomBox" hidden>
-        <label>Room <b id="roomCodeIn" class="roomcode"></b></label>
-        <label>Bots
-          <select id="optBots">
-            <option value="0">None</option>
-            <option value="2">2</option>
-            <option value="4">4</option>
-            <option value="6">6</option>
-          </select>
-        </label>
-        <label>Match
-          <select id="optTime">
-            <option value="6">6 minutes</option>
-            <option value="8">8 minutes</option>
-            <option value="10">10 minutes</option>
-            <option value="12">12 minutes</option>
-          </select>
-        </label>
-        <label class="row"><input type="checkbox" id="optPrivate" /> Private (not listed under JOIN)</label>
-        <p class="help" id="roomHintIn"></p>
+    <div class="rl-card set-card">
+      <header class="lobby-head"><button class="back" id="btnClose">&#8249; BACK</button><h2>MENU</h2><span class="rl-code" id="roomCodeIn" hidden></span></header>
+      <div class="rl-actions"><button class="mbtn" id="btnGarageIn">GARAGE</button><button class="mbtn" id="btnLeave">LEAVE</button></div>
+      <div class="set-sec" id="mapBox" hidden>
+        <div class="chips map-chips" id="optMap"><span class="lbl">MAP</span><button data-m="endless">ENDLESS</button><button data-m="glade">GLADE</button><button data-m="crater">MOON</button><button data-m="bog">BOG</button><button data-m="quarry">QUARRY</button><button data-m="graveyard">GRAVES</button><button data-m="hallow">HALLOW</button></div>
+        <p class="map-blurb" id="mapBlurbIn"></p>
       </div>
-      <label class="vol">Music <input type="range" id="optMusic" min="0" max="100" step="5" value="55" aria-label="Music volume" /></label>
-      <label class="vol">Sound <input type="range" id="optSfx" min="0" max="100" step="5" value="100" aria-label="Sound volume" /></label>
-      <label>Quality
-        <select id="optQuality">
-          <option value="auto">Auto (adaptive)</option>
-          <option value="0">Potato</option>
-          <option value="1">Low</option>
-          <option value="2">Medium</option>
-          <option value="3">High</option>
-          <option value="4">Ultra</option>
-        </select>
-      </label>
-      <!-- ASCII view off
-      <label>Glyph size
-        <select id="optGlyph">
-          <option value="xs">Tiny</option>
-          <option value="s">Small</option>
-          <option value="m">Medium</option>
-          <option value="l">Large</option>
-        </select>
-      </label> -->
-      <label>Colour
-        <select id="optPalette">
-          <option value="color">Muted colour</option>
-          <option value="mono">Monochrome</option>
-        </select>
-      </label>
-      <label>Renderer <small>(reloads)</small>
-        <select id="optRenderer">
-          <option value="auto">Auto</option>
-          <option value="webgl2">WebGL 2</option>
-          <option value="webgpu">WebGPU</option>
-        </select>
-      </label>
-      <label class="row"><input type="checkbox" id="optStats" /> Show performance stats</label>
-      <p class="help">
-        Drive: A D / arrows / d-pad (the other way = brake, then turn around) &nbsp; Boost: W / Shift / RT<br />
-        Hop: Space / A &nbsp; Roof gadget: E / X &nbsp; Bumper gadget: Q / B &nbsp; Crate power-up: F &nbsp; Horn: H / Y &nbsp; Headlight flash: L / LB &nbsp; Flip: R / Start<br />
-        In the air, left/right spins you &nbsp; Scores: hold Tab &nbsp; Zoom: wheel<!-- &nbsp; ASCII: V --></p>
-      <button id="btnClose">Back to the glade</button>
-      <button id="btnLeave" class="danger">Leave to menu</button>
+      <div class="set-sec" id="roomBox" hidden>
+        <div class="chips" id="optBots"><span class="lbl">BOTS</span><button data-v="0">0</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button></div>
+        <div class="chips" id="optTime"><span class="lbl">MINUTES</span><button data-v="6">6</button><button data-v="8">8</button><button data-v="10">10</button><button data-v="12">12</button></div>
+        <div class="chips" id="optPrivate"><span class="lbl">ROOM</span><button data-v="0">PUBLIC</button><button data-v="1">PRIVATE</button></div>
+        <p class="map-blurb" id="roomHintIn"></p>
+      </div>
+      <div class="set-sec">
+        <label class="set-row"><span class="lbl">MUSIC</span><input type="range" id="optMusic" min="0" max="100" step="5" value="55" aria-label="Music volume" /></label>
+        <label class="set-row"><span class="lbl">SOUND</span><input type="range" id="optSfx" min="0" max="100" step="5" value="100" aria-label="Sound volume" /></label>
+      </div>
+      <div class="set-sec">
+        <label class="set-row"><span class="lbl">QUALITY</span><select id="optQuality" class="field">
+          <option value="auto">Auto</option><option value="0">Potato</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option><option value="4">Ultra</option>
+        </select></label>
+        <div class="chips" id="optPalette"><span class="lbl">LOOK</span><button data-v="color">COLOUR</button><button data-v="mono">MONO</button></div>
+        <div class="chips" id="optStats"><span class="lbl">STATS</span><button data-v="0">OFF</button><button data-v="1">ON</button></div>
+        <label class="set-row"><span class="lbl">RENDERER</span><select id="optRenderer" class="field">
+          <option value="auto">Auto</option><option value="webgl2">WebGL 2</option><option value="webgpu">WebGPU</option>
+        </select></label>
+      </div>
+      <details class="set-help"><summary>CONTROLS</summary>
+        <p>A / D drive (the other way brakes, then turns) · W or Shift boost · Space hop · E roof gadget · Q bumper gadget · F crate power-up · H horn · L headlight flash · R flip · in the air, left/right spins you · hold Tab for scores · mouse wheel zooms.<br />Gamepad: stick drive · RT boost · A hop · X roof · B bumper · Y horn · Start flip.</p>
+      </details>
     </div>
   </div>
 
@@ -275,6 +243,7 @@
         <button id="btnCoop" class="mbtn">CO-OP</button>
         <button id="btnGarage" class="mbtn">GARAGE</button>
       </nav>
+      <div id="soloMap" class="solo-map" hidden><button id="mapPrev" aria-label="Previous map">&#8249;</button><span><small>SOLO MAP</small><b id="mapNameMenu">ENDLESS GLADE</b></span><button id="mapNext" aria-label="Next map">&#8250;</button></div>
 
       <!-- co-op lobby: join a code / an open glade, or create a private room -->
       <section id="lobby" hidden aria-label="Co-op lobby">
@@ -294,6 +263,8 @@
         </div>
 
         <div id="lCreate" class="l-pane" hidden>
+          <div class="chips map-chips" id="mapChips"><span class="lbl">MAP</span><button data-m="glade" class="on">GLADE</button><button data-m="crater">MOON</button><button data-m="bog">BOG</button><button data-m="quarry">QUARRY</button><button data-m="graveyard">GRAVES</button><button data-m="hallow">HALLOW</button></div>
+          <p class="map-blurb" id="mapBlurb">Meadows, a pond and the shrine bowl. The classic.</p>
           <div class="chips" id="visChips"><span class="lbl">ROOM</span><button data-v="0" class="on">PUBLIC</button><button data-v="1">PRIVATE</button></div>
           <div class="chips" id="botChips"><span class="lbl">BOTS</span><button data-b="0" class="on">0</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="6">6</button></div>
           <div class="chips" id="timeChips"><span class="lbl">MINUTES</span><button data-t="6">6</button><button data-t="8" class="on">8</button><button data-t="10">10</button><button data-t="12">12</button></div>

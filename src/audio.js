@@ -225,6 +225,8 @@ const SFX = {
   geyser: (d, t) => sample(d, 'geyser', t) && (sample(d, 'splash', t, { gain: 0.6 }), true),
   splash: (d, t) => sample(d, 'splash', t),
   cork: (d, t) => sample(d, 'cork', t),
+  bones: (d, t) => sample(d, 'crack', t, { rate: 1.5, gain: 0.9 }) && (sample(d, 'rock', t + 0.04, { rate: 1.9, gain: 0.6 }), sample(d, 'rock', t + 0.12, { rate: 2.2, gain: 0.4 }), true),
+  splat: (d, t) => sample(d, 'splash', t, { rate: 0.7, gain: 1.1 }) && (sample(d, 'bump', t, { rate: 0.8, gain: 0.7 }), true),
   pop: (d, t) => sample(d, 'cork', t, { rate: 0.5, gain: 1.5 }) && (sample(d, 'bump', t, { gain: 0.7, rate: 1.3 }), true),
   slick: (d, t) => sample(d, 'splash', t, { rate: 0.55, gain: 0.8 }),
   smoke: (d, t) => sample(d, 'whoosh', t, { rate: 0.6, gain: 1.1 }) && (sample(d, 'cork', t, { rate: 0.8 }), true),
@@ -281,10 +283,51 @@ function startWind() {
   src.loopStart = b.start;
   src.loopEnd = b.start + b.dur;
   const g = ctx.createGain();
-  g.gain.value = 0.55;
+  g.gain.value = scene.wind;
+  windGain = g;
   src.connect(g).connect(ambBus);
   src.start(0, b.start + Math.random() * b.dur * 0.8);
   ambBus.gain.setTargetAtTime(1, ctx.currentTime, 2.5);
+}
+
+let windGain = null, bed = null, callT = 0;
+/** the map changed: its music (when the glade music is on), its ambience bed, its far-off calls */
+export function setScene(id) {
+  const next = SCENES[id] ? id : 'glade';
+  if (next === sceneId && bed !== undefined) { /* same scene */ }
+  sceneId = next; scene = SCENES[next];
+  if (!ctx) return;
+  if (windGain) windGain.gain.setTargetAtTime(scene.wind, ctx.currentTime, 1.5);
+  // swap the bed: fade the old one out, load and fade the new one in
+  if (bed && bed.file !== scene.bed) { const old = bed; old.g.gain.setTargetAtTime(0, ctx.currentTime, 0.8); setTimeout(() => { try { old.src.stop(); old.g.disconnect(); } catch { /* */ } }, 4000); bed = null; }
+  if (scene.bed && !bed) {
+    const file = scene.bed;
+    bed = { file, pending: true };
+    fetchFile(file).then((data) => new Promise((res, rej) => { const p = ctx.decodeAudioData(data.slice(0), res, rej); if (p && p.catch) p.catch(rej); })).then((buf) => {
+      if (!bed || bed.file !== file) return;
+      const b = trimmed(buf), src = ctx.createBufferSource(), g = ctx.createGain();
+      src.buffer = b.buf; src.loop = true; src.loopStart = b.start; src.loopEnd = b.start + b.dur;
+      g.gain.value = 0; src.connect(g).connect(ambBus); src.start(0, b.start + Math.random() * b.dur * 0.5);
+      g.gain.setTargetAtTime(scene.bedVol || 0.6, ctx.currentTime, 1.2);
+      Object.assign(bed, { src, g, pending: false });
+    }).catch((e) => console.warn('[audio]', e.message));
+  }
+  if (scene.calls && scene.calls.name === 'crow' && !buffers.has('crow.mp3')) { load('crow.mp3').catch(() => {}); load('crows.mp3').catch(() => {}); }
+  callT = 4 + Math.random() * 6;
+  if (music.kind === 'glade' && music.scene !== sceneId) setMusic('glade');
+}
+/** call every frame: the odd crow in the graveyard, a distant clang in the quarry */
+export function tickScene(dt) {
+  if (!ctx || ctx.state !== 'running' || !scene.calls) return;
+  callT -= dt;
+  if (callT > 0) return;
+  const C = scene.calls;
+  callT = C.every[0] + Math.random() * (C.every[1] - C.every[0]);
+  const { g: d } = out({ x: listener.x + (Math.random() - 0.5) * 60, z: 0 }, C.vol, 80, 0.6);
+  const t = ctx.currentTime + 0.01;
+  if (C.name === 'crow') { const f = Math.random() < 0.6 ? 'crow.mp3' : 'crows.mp3', b = buffers.get(f); if (b) { const src = ctx.createBufferSource(); src.buffer = b.buf; src.playbackRate.value = 0.9 + Math.random() * 0.2; src.connect(d); src.start(t, b.start, b.dur); } }
+  else sample(d, C.name, t, { rate: C.rate || 1 });
+  setTimeout(() => { try { d.disconnect(); } catch { /* */ } }, 12000);
 }
 
 let engine = null;
@@ -329,6 +372,16 @@ export function setEngine(speed01, throttle, boosting, off) {
 // 'menu' loops one calm track; 'glade' alternates the in-game tracks. Streamed through an <audio>
 // element (not decoded into memory) and crossfaded when it changes.
 const TRACKS = { menu: ['music-menu.mp3'], glade: ['music-glade1.mp3', 'music-glade2.mp3'] };
+// each map's own music, and what you hear around you: a bed under the wind and the odd sound far off
+const SCENES = {
+  glade: { tracks: ['music-glade1.mp3', 'music-glade2.mp3'], wind: 0.55 },
+  crater: { tracks: ['music-moon.mp3'], wind: 0.1, bed: 'amb-space.mp3', bedVol: 0.7 },
+  bog: { tracks: ['music-bog.mp3'], wind: 0.25, bed: 'amb-swamp.mp3', bedVol: 0.8 },
+  quarry: { tracks: ['music-quarry.mp3'], wind: 0.4, bed: 'amb-machine.mp3', bedVol: 0.5, calls: { name: 'clang', rate: 0.55, vol: 0.35, every: [9, 20] } },
+  graveyard: { tracks: ['music-graveyard.mp3'], wind: 0.45, bed: 'amb-crickets.mp3', bedVol: 0.5, calls: { name: 'crow', vol: 0.5, every: [7, 18] } },
+  hallow: { tracks: ['music-hallow.mp3'], wind: 0.4, bed: 'amb-crickets.mp3', bedVol: 0.45, calls: { name: 'crow', vol: 0.4, every: [10, 24] } },
+};
+let scene = SCENES.glade, sceneId = 'glade';
 const music = { el: null, gain: null, kind: null, idx: 0 };
 let wantMusic = null;
 
@@ -339,7 +392,7 @@ function fadeOut(m, secs = 1.5) {
   setTimeout(() => { el.pause(); el.removeAttribute('src'); el.load(); try { gain.disconnect(); } catch { /* */ } }, secs * 1000 + 200);
 }
 function startTrack(kind) {
-  const list = TRACKS[kind];
+  const list = kind === 'glade' ? scene.tracks : TRACKS[kind];
   const file = list[music.idx % list.length];
   const el = new Audio();
   el.preload = 'auto';
@@ -364,10 +417,10 @@ export function setMusic(kind) {
 }
 function applyMusic() {
   const kind = wantMusic;
-  if (!ctx || kind === music.kind) return;
+  if (!ctx || (kind === music.kind && (kind !== 'glade' || music.scene === sceneId))) return;
   fadeOut(music);
   Object.assign(music, { el: null, gain: null, kind: null });
-  if (kind) { if (kind === 'glade') music.idx = Math.floor(Math.random() * TRACKS.glade.length); Object.assign(music, startTrack(kind)); }
+  if (kind) { if (kind === 'glade') music.idx = Math.floor(Math.random() * scene.tracks.length); Object.assign(music, startTrack(kind), { scene: sceneId }); }
 }
 
 // ------------------------------------------------------------------ for the playtests
@@ -377,5 +430,6 @@ window.__hsgAudio = () => ({
   missing: Object.values(BANK).flatMap((S) => S.files).filter((f) => !buffers.has(`${f}.mp3`)),
   music: music.kind, track: music.el && music.el.src.split('/').pop(), playing: !!(music.el && !music.el.paused), t: music.el ? music.el.currentTime : 0,
   engineRate: engine ? engine.layers[0].src.playbackRate.value : 0, engineGain: engine ? engine.eg.gain.value : 0,
+  scene: sceneId, bed: bed ? bed.file + (bed.pending ? ' (loading)' : '') : null,
   vol: { ...vol }, musicGain: musicBus ? musicBus.gain.value : null, played: { ...stats.played }, fallback: { ...stats.fallback },
 });

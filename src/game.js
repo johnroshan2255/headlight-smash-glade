@@ -7,11 +7,13 @@ import { Input } from './input.js';
 import { QualityManager, LEVELS, detectTier, isMobile } from './quality.js';
 import { setupFullscreen, enterFullscreen } from './fullscreen.js';
 import { GADGETS, GADGET_KEYS, GADGET_SECONDS, HATS } from './layout.js';
-import { safeAt } from './gen.js';
+import { safeAt, setMap, mapInfo, mapBounds, mapId } from './gen.js';
 import { Account } from './account.js';
-import { packSetup, unpackSetup, WHEELS, ROOF, BUMPER, DEFAULT_SETUP, HAT_IDS } from './catalog.js';
-import { NHL, NFL, blit2dMaterial } from './sil.js';
-import { Physics } from './physics2d.js';
+import { packSetup, unpackSetup, WHEELS, ROOF, BUMPER, DEFAULT_SETUP, HAT_IDS, MAP_LIST, mapName } from './catalog.js';
+import { NHL, NFL, blit2dMaterial, glowMaterial } from './sil.js';
+import { MeshBuilder, rgba } from './meshes.js';
+import { CLS } from './shaders.js';
+import { Physics, setGravity } from './physics2d.js';
 import { Car } from './car2d.js';
 import { VEHICLES, vehicleSpec } from './vehicles.js';
 import { FX2D } from './fx2d.js';
@@ -95,7 +97,7 @@ export async function startGame(loader) {
     const el = document.createElement('div');
     el.textContent = text;
     $('feed').prepend(el);
-    while ($('feed').children.length > 4) $('feed').lastChild.remove();
+    while ($('feed').children.length > 3) $('feed').lastChild.remove();
     setTimeout(() => el.classList.add('old'), 4500);
     setTimeout(() => el.remove(), 6000);
   };
@@ -135,6 +137,7 @@ export async function startGame(loader) {
    *  attacker reports it: the faster car rams, the saw cuts, the car coming down stomps, the
    *  plow scoops. Its browser sends the victim the push and damage; the victim takes nothing
    *  from the contact itself. */
+  const propHitT = new Map();
   function onCarContact(car, other, sp) {
     if (!car.local || car.wrecked) return;
     const o = other && other.car;
@@ -299,7 +302,6 @@ export async function startGame(loader) {
       if (!cars.has(c.id)) return; // left while wrecked
       c.unwreck(pickSpawn(c, c.body.p[0]));
       c.gadget = null;
-      if (c === me) toast('A fresh buggy drops out of the fog.', 2);
     }, 2000);
   }
   /** A clear spawn spot near the action: beside a human driver (so fights happen in an endless
@@ -314,8 +316,11 @@ export async function startGame(loader) {
     // people respawn near where they crashed (no surprise trips across the map); bots drop in near a human
     if (humans.length && (self.isBot || around === null)) ax = humans[Math.floor(Math.random() * humans.length)].body.p[0];
     let best = null, bestGap = -1;
+    const B = mapBounds();
+    if (B) ax = Math.max(B[0] + 12, Math.min(B[1] - 12, ax));
     for (let i = 0; i < 80; i++) {
       const x = Math.round(ax + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * (10 + i)));
+      if (B && (x < B[0] + 10 || x > B[1] - 10)) continue; // inside the arena's cliffs
       if (!safeAt(x)) continue;
       const g = gap(x);
       if (g > 9) return x;
@@ -349,12 +354,14 @@ export async function startGame(loader) {
     if (m.n === matchN) return;
     const first = !matchN;
     matchN = m.n;
-    // a fresh match: everyone back on zero, in their (maybe new) colours, dropping in fresh
+    // a fresh match: on the room's map, everyone back on zero, in their (maybe new) colours, dropping in fresh
+    applyMap(roomMap());
     for (const c of allCars()) c.score = 0;
     if (me.colorIdx !== net.myColor) applySetup({ ...DEFAULT_SETUP, ...account.setup }, true);
     syncBots();
     for (const c of allCars()) if (c.local) { if (c.wrecked) c.unwreck(pickSpawn(c, c.body.p[0])); else c.respawnAt(pickSpawn(c, c.body.p[0])); c.hp = 100; }
-    if (!first) { toast(`Match ${m.n}! Most smashes in ${net.settings.time || 8} minutes wins.`, 3); sfx.play('jingle'); }
+    if (!first) sfx.play('jingle');
+    toast('GO! Most smashes wins.', 2);
   }
   function showResults(m) {
     if (resultsFor === m.n) return;
@@ -399,6 +406,46 @@ export async function startGame(loader) {
     el.classList.toggle('hot', left <= 30); el.classList.remove('over');
     if (left <= 10 && left > 0 && left !== lastTick) { lastTick = left; sfx.play('tick', undefined, { vol: 0.9, wet: 0 }); }
   }
+  // ---------------------------------------------------------------- maps
+  // The room's map (solo: the endless glade). Switching rebuilds the world from the new layout,
+  // sets its gravity, and drops our cars (rebuilt: their springs are tuned to gravity) back in.
+  let moonE = null;
+  function makeMoon() {
+    // a huge pale moon behind the fog: a soft disc that fades out at its rim, with a faint halo
+    const mb = new MeshBuilder();
+    const ringAt = (r, col) => { const out = []; for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; out.push(mb.vert(Math.cos(a) * r, Math.sin(a) * r, 0, 0, 0, 1, rgba(...col, CLS.GLOW))); } return out; };
+    const c = mb.vert(0, 0, 0, 0, 0, 1, rgba(0.4, 0.42, 0.39, CLS.GLOW));
+    const r1 = ringAt(0.84, [0.36, 0.38, 0.35]), r2 = ringAt(1.0, [0.2, 0.21, 0.2]), r3 = ringAt(1.7, [0, 0, 0]);
+    for (let i = 0; i < 48; i++) {
+      const j = (i + 1) % 48;
+      mb.tri(c, r1[i], r1[j]);
+      mb.tri(r1[i], r2[i], r2[j]); mb.tri(r1[i], r2[j], r1[j]);
+      mb.tri(r2[i], r3[i], r3[j]); mb.tri(r2[i], r3[j], r2[j]); // the halo, fading to nothing
+    }
+    const e = new pc.Entity('moon');
+    e.addComponent('render', { meshInstances: [new pc.MeshInstance(mb.build(device), glowMaterial(0.8))], layers: [layer.id], castShadows: false, receiveShadows: false });
+    e.render.meshInstances[0].cull = false;
+    app.root.addChild(e);
+    e.enabled = false;
+    return e;
+  }
+  function applyMap(id) {
+    sfx.setScene(id);
+    if (!setMap(id)) return false;
+    setGravity(mapInfo().gravity);
+    physics.bounds = mapBounds();
+    world.resetChunks();
+    sandbox.resetChunks();
+    if (mapInfo().moon && !moonE) moonE = makeMoon();
+    if (moonE) moonE.enabled = !!mapInfo().moon;
+    if (me) { applySetup({ ...DEFAULT_SETUP, ...account.setup }, true); me.respawnAt(pickSpawn(me, 0)); camX = me.body.p[0]; }
+    else camX = 0;
+    for (const id of [...bots.keys()]) removeCar(id);
+    if (started) syncBots();
+    return true;
+  }
+  const roomMap = () => (net.online ? net.settings.map || 'endless' : 'endless');
+
   // the room's lobby (before the first match and between matches)
   const roomLobby = setupRoomLobby({
     net,
@@ -423,7 +470,7 @@ export async function startGame(loader) {
     const victim = nameOf(msg.id), killer = msg.killer ? nameOf(msg.killer) : null;
     if (msg.torn) { feed(`${msg.torn.map(nameOf).join(' and ')} tore ${victim} in two!`); if (me && msg.torn.includes(me.id)) toast(`You tore ${victim} in two!`, 2); if (me && msg.id === me.id) toast('Torn in two!', 2); return; }
     feed(killer && msg.killer !== msg.id ? `${killer} smashed ${victim}` : `${victim} wrecked`);
-    if (me && msg.killer === me.id && msg.id !== me.id) toast(`You smashed ${victim}!`, 2);
+    if (me && msg.killer === me.id && msg.id !== me.id) toast(`SMASHED ${victim.toUpperCase()}`, 1.5);
   }
 
   // gadgets
@@ -482,13 +529,23 @@ export async function startGame(loader) {
     cars: allCars,
     hat: (id) => { account.foundHat(id); popCoins(60); toast(`You found the ${HATS[id] || id}! It's in your garage.`, 3); sfx.play('jingle'); updateHud(true); },
     sound: (name, at) => sfx.play(name, at && { x: at.x, z: 0 }, { vol: 1, maxDist: 60 }),
+    smashed: (what, by) => { if (me && by === me.id) earn('boom'); }, // a skeleton or a pumpkin you broke
+    // something thrown (a bone, a skeleton, a pumpkin, a log) hits a car: it hurts, credited to the thrower (host decides, the car's owner applies)
+    thrownHit: (P, car, sp) => {
+      if (performance.now() - (propHitT.get(P.id) || 0) < 600) return;
+      propHitT.set(P.id, performance.now());
+      const thrower = cars.get(P.thrownBy), dmg = { skeleton: 34, pumpkin: 20, bone: 12, boulder: 30, log: 22 }[P.kind] || 10;
+      if (!thrower || sameTeam(car, thrower)) return;
+      shoveCar(car, Math.sign(P.body.v[0] || 1) * 4, 3, dmg, thrower);
+      sfx.play('crunch', { x: car.body.p[0], z: 0 }, { vol: 1 });
+    },
   } });
   function onGrant(msg) {
     sandbox.onGrant(msg);
     const c = cars.get(msg.to);
     if (c && c.local) {
       c.gadget = msg.g; c.gadgetT = GADGET_SECONDS;
-      if (c === me) { toast(`${GADGETS[msg.g].name}: ${GADGETS[msg.g].hint}`, 3); sfx.play('pickup'); earn('crate'); }
+      if (c === me) { const seen = store.get('seenGadgets', ''); if (!seen.split(',').includes(msg.g)) { toast(`${GADGETS[msg.g].name}: ${GADGETS[msg.g].hint}`, 3); store.set('seenGadgets', `${seen},${msg.g}`); } sfx.play('pickup'); earn('crate'); }
     }
   }
 
@@ -569,7 +626,8 @@ export async function startGame(loader) {
     if (c === me) sfx.play('coins', undefined, { vol: Math.min(1, 0.5 + n / 60), wet: 0 });
     updateHud(true);
   }
-  function earn(why, n = 1, stats = null) { popCoins(account.earn(why, n, stats)); }
+  const QUIET = new Set(['distance', 'air', 'flip', 'boom', 'match']); // earned quietly (no +¢ pop)
+  function earn(why, n = 1, stats = null) { const got = account.earn(why, n, stats); if (!QUIET.has(why)) popCoins(got); }
   function earnings(dt) {
     if (!me || me.wrecked || me.ghost) { lastX = null; airT = 0; spin = 0; return; }
     const b = me.body;
@@ -590,6 +648,7 @@ export async function startGame(loader) {
   // ---------------------------------------------------------------- network handlers
   const carSeen = new Map();
   net.on('car', (s) => {
+    if (departed.has(s.id) && performance.now() - departed.get(s.id) < 60000) return;
     let c = cars.get(s.id);
     if (c && c.local) return;
     if (net.isHost && String(s.id).startsWith('bot')) return; // a late packet from the old host's bots
@@ -610,7 +669,8 @@ export async function startGame(loader) {
     if (!wrecked && c.wrecked) c.unwreck(s.p[0]);
     carSeen.set(s.id, performance.now());
   });
-  net.on('left', (m) => removeCar(m.id));
+  const departed = new Map(); // id -> when: a late snapshot from someone who left must not bring their car back
+  net.on('left', (m) => { removeCar(m.id); carSeen.delete(m.id); departed.set(m.id, performance.now()); });
   net.on('boom', applyBoom);
   net.on('grant', (m) => onGrant(m));
   net.on('shock', shockwave);
@@ -629,12 +689,13 @@ export async function startGame(loader) {
   net.on('shoveProp', (m) => sandbox.isHost && sandbox.shove(m.id, m.v[0], m.v[1], m.from, m.sp));
   net.on('grab', (m) => { if (sandbox.isHost) sandbox.grab(sandbox.dyn.get(m.id), m.from); });
   net.on('throw', (m) => { if (sandbox.isHost) { const P = sandbox.dyn.get(m.id); if (P && P.heldBy === m.from) sandbox.throw(P, m.from, m.v[0], m.v[1]); } });
+  net.on('splat', (m) => sandbox.onSplat(m));
   net.on('snap', (m) => { if (sandbox.isHost) { const T = sandbox.trees.get(m.i); if (T) sandbox.snapTree(T, m.dir, m.from); } });
   net.on('snapped', (m) => { const T = sandbox.trees.get(m.i); if (T && !T.snapped) sandbox.hideTree(T); });
   net.on('regrow', (m) => { const T = sandbox.trees.get(m.i); if (T && T.snapped) sandbox.regrow(T); });
   net.on('slide', (m) => { if (sandbox.isHost) { const sl = sandbox.slides.get(m.i); if (sl) sandbox.releaseSlide(sl); } });
   net.on('rumble', (m) => sfx.play('rumble', { x: m.x, z: 0 }, { maxDist: 70 }));
-  net.on('roster', () => { syncBots(); updateBoard(); if (!$('settings').hidden) paintRoom(); });
+  net.on('roster', () => { if (!started || net.phase !== 'playing') applyMap(roomMap()); syncBots(); updateBoard(); if (!$('settings').hidden) paintRoom(); });
   net.on('becameHost', () => { toast('You are now hosting the glade.', 2.5); for (const id of [...cars.keys()]) if (String(id).startsWith('bot') && !bots.has(id)) removeCar(id); sandbox.setAuthority(); syncBots(); });
   // the room is gone (the host left, or the server went away): back to the menu, with the reason
   net.on('disconnected', (m) => {
@@ -735,26 +796,32 @@ export async function startGame(loader) {
   const statsEl = $('stats');
   let showStats = store.get('stats', '0') === '1' || new URLSearchParams(location.search).has('stats');
   statsEl.hidden = !showStats;
-  $('optStats').checked = showStats;
-  $('optQuality').value = savedQ; $('optPalette').value = palette;
+  $('optQuality').value = savedQ;
   // $('optGlyph').value = glyph; // ASCII view off
   $('optRenderer').value = store.get('renderer', 'auto');
   let paused = false;
-  // the room box in settings: the invite code, and (for the host) bots and privacy
+  // ≡ in the glade: chips light up the current choice
+  const lightChips = (id, v) => { for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', (b.dataset.v ?? b.dataset.m) === String(v)); };
+  const onChip = (id, fn) => { for (const b of $(id).querySelectorAll('button')) b.addEventListener('click', () => { if (!b.disabled) fn(b.dataset.v ?? b.dataset.m); }); };
+  // the room box (online): the invite code and, for the host, bots, match length and privacy; solo: the map
   const paintRoom = () => {
     $('roomBox').hidden = !net.online;
-    if (!net.online) return;
-    $('roomCodeIn').textContent = net.code || 'PUBLIC';
-    $('optBots').value = String(Math.max(0, net.settings.bots));
-    $('optPrivate').checked = !!net.settings.private;
+    $('mapBox').hidden = net.online; // rooms change maps in their lobby
+    $('roomCodeIn').hidden = !net.online;
+    lightChips('optPalette', palette); lightChips('optStats', showStats ? 1 : 0);
+    if (!net.online) { lightChips('optMap', mapId()); const M = MAP_LIST.find((m) => m.id === mapId()); $('mapBlurbIn').textContent = M ? M.blurb : 'Endless: drive as far as you like either way.'; return; }
+    $('roomCodeIn').textContent = net.code || 'ROOM';
     const host = net.isHost;
-    $('optTime').value = String(net.settings.time || 8);
-    $('optBots').disabled = !host; $('optPrivate').disabled = !host || !net.code; $('optTime').disabled = !host;
-    $('roomHintIn').textContent = host ? `Friends join with code ${net.code}. Changes apply from the next match.` : `Friends join with code ${net.code}. The host sets bots, match length and privacy.`;
+    lightChips('optBots', Math.max(0, net.settings.bots)); lightChips('optTime', net.settings.time || 8); lightChips('optPrivate', net.settings.private ? 1 : 0);
+    for (const id of ['optBots', 'optTime', 'optPrivate']) for (const b of $(id).querySelectorAll('button')) b.disabled = !host;
+    $('roomHintIn').textContent = host ? `${mapName(net.settings.map)}. Friends join with code ${net.code}. Bots apply now; the rest from the next match.` : `${mapName(net.settings.map)}. Friends join with code ${net.code}. The host sets bots, minutes and privacy.`;
   };
-  $('optBots').addEventListener('change', (e) => net.send('roomSettings', { bots: Number(e.target.value) }));
-  $('optPrivate').addEventListener('change', (e) => net.send('roomSettings', { private: e.target.checked }));
-  $('optTime').addEventListener('change', (e) => { net.send('roomSettings', { time: Number(e.target.value) }); toast(`The next match will be ${e.target.value} minutes.`, 2); });
+  onChip('optBots', (v) => net.send('roomSettings', { bots: Number(v) }));
+  onChip('optPrivate', (v) => net.send('roomSettings', { private: v === '1' }));
+  onChip('optTime', (v) => { net.send('roomSettings', { time: Number(v) }); toast(`The next match will be ${v} minutes.`, 2); });
+  onChip('optMap', (v) => { if (net.online) return; store.set('soloMap', v); applyMap(v); paintRoom(); });
+  onChip('optPalette', (v) => { palette = v; store.set('palette', palette); u.mono.setValue(palette === 'mono' ? 1 : 0); paintRoom(); });
+  onChip('optStats', (v) => { showStats = v === '1'; statsEl.hidden = !showStats; store.set('stats', showStats ? '1' : '0'); paintRoom(); });
   const openSettings = (open) => {
     $('settings').hidden = !open;
     paused = open && !net.online;
@@ -806,17 +873,21 @@ export async function startGame(loader) {
     me.score = score; // a new ride mid-match keeps your smashes
     me.respawnAt(x, 2);
     net.send('profile', { vehicle: setup.ride, hat: setup.hat });
-    toast(`${me.spec.name} is ready.`, 2);
     updateHud(true);
   }
   $('btnSettings').addEventListener('click', () => openSettings(true));
   $('btnClose').addEventListener('click', () => openSettings(false));
-  $('btnLeave').addEventListener('click', () => { net.leave(); location.reload(); });
+  let leaveT = 0;
+  $('btnLeave').addEventListener('click', () => { // tap twice: leaving a room you host closes it for everyone
+    if (performance.now() - leaveT < 2500) { net.leave(); location.reload(); return; }
+    leaveT = performance.now();
+    $('btnLeave').textContent = net.online && net.isHost ? 'CLOSE ROOM?' : 'SURE?';
+    setTimeout(() => { $('btnLeave').textContent = 'LEAVE'; }, 2500);
+  });
   window.addEventListener('keydown', (e) => { if (e.code === 'Escape') openSettings($('settings').hidden); });
   $('optQuality').addEventListener('change', (e) => { store.set('quality', e.target.value); quality.setManual(e.target.value); if (e.target.value === 'auto') quality.maxLevel = tier; });
   // ASCII view off
   // $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
-  $('optPalette').addEventListener('change', (e) => { palette = e.target.value; store.set('palette', palette); u.mono.setValue(palette === 'mono' ? 1 : 0); });
   $('optRenderer').addEventListener('change', (e) => { store.set('renderer', e.target.value); location.reload(); });
   // sound: two sliders, saved by audio.js
   const vols = sfx.getVolumes();
@@ -824,7 +895,6 @@ export async function startGame(loader) {
   $('optMusic').addEventListener('input', (e) => sfx.setVolumes({ music: e.target.value / 100 }));
   $('optSfx').addEventListener('input', (e) => sfx.setVolumes({ sfx: e.target.value / 100 }));
   $('optSfx').addEventListener('change', () => sfx.play('crunch', undefined, { vol: 0.8 }));
-  $('optStats').addEventListener('change', (e) => { showStats = e.target.checked; statsEl.hidden = !showStats; store.set('stats', showStats ? '1' : '0'); });
   // ASCII view off: the HUD toggle
   // const btnAscii = $('btnAscii');
   // const syncAsciiBtn = () => { btnAscii.classList.toggle('on', asciiOn); btnAscii.textContent = asciiOn ? '[@] ASCII' : '[ ] ASCII'; };
@@ -857,10 +927,14 @@ export async function startGame(loader) {
     $('btnRoof').hidden = !me.roofG; if (me.roofG) $('btnRoof').textContent = short(ROOF[me.setup.roof].name);
     $('btnBumper').hidden = !me.bumperG || me.setup.bumper === 'catcher'; if (me.bumperG) $('btnBumper').textContent = short(BUMPER[me.setup.bumper].name);
     $('btnGadget').hidden = !active;
-    const humans = net.online ? net.players.length : 1;
-    $('mode').textContent = net.online ? `ONLINE${net.code ? ` · ${net.code}` : ''} · ${humans} driver${humans > 1 ? 's' : ''} + ${Math.max(0, allCars().length - humans)} bots` : `SOLO · ${bots.size} bots`;
+    // the corner shows only what matters: your smashes (and place), or the hats in the endless glade
+    const others = allCars().filter((c) => c !== me && !String(c.id).startsWith('warm') && c.id !== 'preview');
+    const place = 1 + others.filter((c) => (c.score | 0) > (me.score | 0)).length;
+    const ord = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+    $('mode').textContent = `SMASHES ${me.score | 0}${others.length && (me.score | 0) > 0 ? ` · ${ord(place)}` : ''}`;
+    $('hats').hidden = mapId() !== 'endless';
     $('hats').textContent = `HATS ${Math.max(0, account.profile ? account.profile.owned.hats.length - 1 : sandbox.ownedHats.size)}/12`;
-    $('coins').textContent = `${account.coins.toLocaleString()} ¢`;
+    $('coins').hidden = true; // coins pop up when you earn them; the total is in the menu and garage
   }
 
   // name tags over the cars
@@ -868,6 +942,45 @@ export async function startGame(loader) {
   /** cars inside a smoke cloud vanish from everyone else's screen (you always see yourself) */
   function updateSmoke() {
     for (const c of cars.values()) c.inSmoke = c !== me && !c.wrecked && Car.ctx.smokeAt(c.body.p[0], c.body.p[1]);
+  }
+  // arrows at the screen's edge pointing at cars you can't see (rivals; teammates fainter), with the distance
+  const ptrs = [];
+  const _pw = new pc.Vec3(), _ps = new pc.Vec3();
+  function updatePointers() {
+    const cam = ascii.sceneCam.camera, W = canvas.clientWidth, H = canvas.clientHeight;
+    const list = [];
+    if (me && !me.wrecked && started) {
+      for (const c of allCars()) {
+        if (c === me || c.wrecked || c.ghost || c.inSmoke || String(c.id).startsWith('warm') || c.id === 'preview') continue;
+        _pw.set(c.body.p[0], c.body.p[1] + 0.6, 0);
+        cam.worldToScreen(_pw, _ps);
+        if (_ps.x > -10 && _ps.x < W + 10 && _ps.y > -10 && _ps.y < H + 10 && _ps.z > 0) continue; // on screen
+        list.push({ c, sx: _ps.x, sy: _ps.y, d: Math.hypot(c.body.p[0] - me.body.p[0], c.body.p[1] - me.body.p[1]) });
+      }
+      list.sort((a, b) => a.d - b.d);
+    }
+    const n = Math.min(list.length, 7);
+    while (ptrs.length < n) { const el = document.createElement('div'); el.className = 'ptr'; el.innerHTML = '<i></i><b></b>'; $('pointers').appendChild(el); ptrs.push(el); }
+    const cx = W / 2, cy = H / 2, mx = 26, top = 70, bottom = touchUI ? 150 : 60;
+    for (let i = 0; i < ptrs.length; i++) {
+      const el = ptrs[i];
+      if (i >= n) { el.style.display = 'none'; continue; }
+      const { c, sx, sy, d } = list[i];
+      // from the screen's centre towards the car, clamped to a box just inside the edges
+      let dx = sx - cx, dy = sy - cy;
+      if (!(Math.abs(dx) + Math.abs(dy) > 0.1)) { dx = c.body.p[0] > me.body.p[0] ? 1 : -1; dy = 0; }
+      const hw = cx - mx, ht = cy - top, hb = H - bottom - cy;
+      const k = Math.min(dx > 0 ? hw / dx : dx < 0 ? -hw / dx : Infinity, dy > 0 ? hb / dy : dy < 0 ? -ht / dy : Infinity);
+      const px = cx + dx * k, py = cy + dy * k;
+      const mate = sameTeam(c, me);
+      el.style.display = '';
+      el.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px)`;
+      el.style.setProperty('--a', `${Math.atan2(dy, dx).toFixed(3)}rad`);
+      el.style.setProperty('--c', net.online ? teamCSS(c.colorIdx) : '#ffb08a');
+      el.classList.toggle('mate', mate);
+      el.classList.toggle('near', !mate && d < 30);
+      el.lastChild.textContent = `${Math.round(d)}m`;
+    }
   }
   function updateTags() {
     const cam = ascii.sceneCam.camera;
@@ -956,7 +1069,15 @@ export async function startGame(loader) {
       }
       const now = performance.now();
       for (const c of allCars()) if (!c.local) c.applyRemote(now);
-      for (const [id, t] of carSeen) if (now - t > 4000 && cars.get(id) && !cars.get(id).local) { removeCar(id); carSeen.delete(id); }
+      // a car that's gone quiet (its phone switched apps, its tab is in the background) stays where it
+      // was, marked away; it only goes if it stays silent for 30 s (a real leave is announced at once)
+      for (const [id, t] of carSeen) {
+        const c = cars.get(id);
+        if (!c || c.local) continue;
+        const away = now - t > 2500;
+        if (away !== !!c.away) { c.away = away; const tg = tags.get(id); if (tg) tg.classList.toggle('away', away); }
+        if (now - t > 30000) { removeCar(id); carSeen.delete(id); }
+      }
       sandbox.update(dt, allCars());
       magnets(dt);
       updateGrabs();
@@ -971,6 +1092,8 @@ export async function startGame(loader) {
     for (const c of allCars()) c.sync(dt, time);
     fx.update(dt);
     updateCamera(dt);
+    sfx.tickScene(dt);
+    if (moonE && moonE.enabled) { moonE.setPosition(camX * 0.9 + 34, camY * 0.6 + 22, -80); moonE.setLocalScale(13, 13, 1); } // far behind the fog: it barely drifts
     world.update(dt, camX);
     world.stream(camX, started ? 4 : 30);
     sandbox.camX = camX;
@@ -988,7 +1111,7 @@ export async function startGame(loader) {
     if (toastTimer > 0) { toastTimer -= dt; shownFor += dt; if (toastQueue.length && shownFor > 1.8) { const [m, t] = toastQueue.shift(); showLine(m, t); } else if (toastTimer <= 0) $('toast').hidden = true; } else if (toastQueue.length) { const [m, t] = toastQueue.shift(); showLine(m, t); }
     $('board').hidden = !input.board;
     if (input.board) updateBoard();
-    if (started) { updateSmoke(); updateHud(); updateTags(); updateClock(); }
+    if (started) { updateSmoke(); updateHud(); updateTags(); updatePointers(); updateClock(); }
     statsTimer -= rawDt;
     if (showStats && statsTimer <= 0) {
       statsTimer = 0.5;
@@ -996,7 +1119,7 @@ export async function startGame(loader) {
     }
   });
 
-  window.__hsg = { app, world, physics, sandbox, cars, net, fx, input, account, applySetup, preview, get me() { return me; }, bots, get cam() { return { x: camX, y: camY, z: camZ }; }, lockCam(L) { camLock = L; },
+  window.__hsg = { app, world, physics, sandbox, cars, net, fx, input, account, applySetup, preview, map: () => ({ id: mapId(), bounds: mapBounds(), gravity: mapInfo().gravity, moon: !!(moonE && moonE.enabled) }), applyMap, spawnNear: (x) => pickSpawn(me, x), get me() { return me; }, bots, get cam() { return { x: camX, y: camY, z: camZ }; }, lockCam(L) { camLock = L; },
     /** tests: give a bot a fixed loadout (rebuilds its car in place) */
     botSetup(id, setup) {
       const old = cars.get(id), brain = bots.get(id);
@@ -1034,20 +1157,23 @@ export async function startGame(loader) {
     preview: (setup) => preview(setup),
     /** CREATE or JOIN a room from the menu: connect, then wait in the room's lobby. onEnter() is
      *  called when it's time to drive (the host pressed START, or DRIVE IN during a match). */
-    async joinRoom({ how, code, name, private: priv = false, bots = 0, time = 8 }, onEnter, onGarage) {
+    async joinRoom({ how, code, name, private: priv = false, bots = 0, time = 8, map = 'glade' }, onEnter, onGarage) {
       if (!serverUrl) return { error: 'No game server.' };
       enterHook = onEnter; garageHook = onGarage;
       const setup = { ...DEFAULT_SETUP, ...account.setup };
       try {
-        await net.connect(serverUrl, { how, code, name: (name || account.name || 'Driver').slice(0, 16), vehicle: vehicleSpec(setup.ride).id, hat: setup.hat || 'straw', private: priv, bots, time });
+        await net.connect(serverUrl, { how, code, name: (name || account.name || 'Driver').slice(0, 16), vehicle: vehicleSpec(setup.ride).id, hat: setup.hat || 'straw', private: priv, bots, time, map });
       } catch (err) {
         console.warn('join failed', err);
         return { error: how === 'join' ? `No room ${code} (or it's full).` : 'Could not reach the server.' };
       }
       seenPhase = net.phase;
+      applyMap(roomMap());
       roomLobby.show();
       return { ok: true };
     },
+    /** the menu's solo map choice: the world behind the menu switches to it */
+    previewMap(id) { if (!started && !net.online) applyMap(id); },
     async begin(e, choice) {
       if (started) return;
       if (e) enterFullscreen();
@@ -1062,14 +1188,15 @@ export async function startGame(loader) {
       if (net.online) color = net.myColor; // already in a room (from its lobby)
       else if (serverUrl && choice.mode !== 'solo') { // ?autostart: join or make the room and drive straight in
         try {
-          await net.connect(serverUrl, { how: 'auto', code: choice.code || '', name, vehicle, hat, bots: choice.bots ?? -1, time: choice.time ?? 8 });
+          await net.connect(serverUrl, { how: 'auto', code: choice.code || '', name, vehicle, hat, bots: choice.bots ?? -1, time: choice.time ?? 8, map: QUERY.get('map') || 'endless' });
           color = net.myColor;
+          applyMap(roomMap());
         } catch (err) {
           console.warn('online failed', err);
           toast('Could not reach the server. Driving solo.', 3);
         }
       }
-      if (!net.online) { net.id = 'local'; net.hostId = 'local'; }
+      if (!net.online) { net.id = 'local'; net.hostId = 'local'; applyMap(choice.map || 'endless'); }
       sandbox.setAuthority();
       me = makeCar({ id: net.id, local: true, vehicle, colorIdx: color, name, hat, setup });
       me.respawnAt(pickSpawn(me));
@@ -1081,13 +1208,14 @@ export async function startGame(loader) {
       $('meters').hidden = false;
       $('actions').hidden = !touchUI;
       canvas.focus();
-      const mm = net.online && net.match && !net.match.over ? Math.max(1, Math.round((net.match.endsAt - net.serverNow()) / 60000)) : 0;
-      toast(net.online ? `Dropped into the glade${net.code ? ` (room ${net.code})` : ''}.${mm ? ` About ${mm} min left: most smashes wins!` : ' Smash something!'}` : 'Solo glade. The bots are already revving.', 3);
       window.dispatchEvent(new Event('hsg:closeGarage'));
       roomLobby.hide();
       seenPhase = net.phase;
       if (net.online && net.match) { if (net.phase === 'playing') matchN = net.match.n; else onMatch(net.match); }
-      setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ to change your ride' : 'A/D drive · W or Shift boost · Space hop · E gadget · Esc to change your ride', 5), 3200);
+      // the controls, for your first couple of drives only
+      const drives = Number(store.get('drives', '0')) + 1;
+      store.set('drives', String(drives));
+      if (drives <= 2) setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ menu' : 'A/D drive · W boost · Space hop · E / Q gadgets · Esc menu', 4), 800);
       updateHud(true);
     },
   };

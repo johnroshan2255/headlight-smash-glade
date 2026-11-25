@@ -15,7 +15,7 @@ for (const P of [B, C]) await P.page.evaluate(() => history.replaceState(null, '
 const names = (P) => P.page.evaluate(() => [...window.__hsg.cars.values()].filter((c) => !String(c.id).startsWith('bot')).map((c) => c.name).sort().join(','));
 ok((await names(A)) === 'Guest1,Guest2,Host', `three drivers in ${room} (${await names(A)})`);
 // a guest leaves: only they go
-await C.page.evaluate(() => document.getElementById('btnLeave').click());
+await C.page.evaluate(() => { const b = document.getElementById('btnLeave'); b.click(); b.click(); }); // LEAVE asks once (SURE?), the second tap leaves
 await sleep(2000);
 ok((await names(A)) === 'Guest1,Host' && (await names(B)) === 'Guest1,Host', `Guest2 left: the others carry on (${await names(A)} / ${await names(B)})`);
 ok(await A.page.evaluate(() => window.__hsg.net.online) && await B.page.evaluate(() => window.__hsg.net.online), 'the room is still open');

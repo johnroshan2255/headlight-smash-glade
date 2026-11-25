@@ -106,6 +106,7 @@ export class FX2D {
         if (T.n >= T.cap) continue;
         const r = p.size * (1 + k * (p.kind === 'smoke' ? 1.8 : 1.0));
         // fog (the smoke bomb) is the colour of the mist itself, thick enough to swallow a buggy
+        if (p.kind === 'pulp') { this.fan(T, p.x, p.y, p.z, p.size * (1 - k * 0.4), p.col, 0.9 * (1 - k * k), false); if (p.y < -40) p.t = p.life; continue; } // pumpkin and melon bits
         const a = p.kind === 'fog' ? 0.9 * Math.min(1, (1 - k) * 2.5) * Math.min(1, p.t * 3) : (p.kind === 'smoke' ? 0.55 : p.kind === 'steam' ? 0.5 : 0.35) * (1 - k) * Math.min(1, p.t * 6);
         const c = p.kind === 'smoke' ? [22, 22, 22] : p.kind === 'steam' ? [190, 200, 200] : p.kind === 'fog' ? [92, 104, 100] : [40, 40, 38];
         this.fan(T, p.x, p.y, p.z, r, c, a, true);

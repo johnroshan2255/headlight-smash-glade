@@ -14,7 +14,7 @@ for (const [tag, viewport, extra] of [['desk', { width: 1280, height: 720 }, { d
   await sleep(900);
   await p.screenshot({ path: `${SHOTS}menu-${tag}.png` });
   const visible = await p.evaluate(() => [...document.querySelectorAll('#boot button, #boot input, #boot select')].filter((e) => e.offsetParent).map((e) => e.id));
-  ok(visible.join() === 'btnPlay,btnCoop,btnGarage', `${tag}: just PLAY, CO-OP and GARAGE on the menu (${visible.join()})`);
+  ok(visible.join() === 'btnPlay,btnCoop,btnGarage,mapPrev,mapNext', `${tag}: PLAY, CO-OP, GARAGE and the solo map picker on the menu (${visible.join()})`);
   await p.click('#btnCoop');
   await sleep(3800);
   await p.screenshot({ path: `${SHOTS}lobby-${tag}.png` });

@@ -1,6 +1,6 @@
 # next.md: where Smash Glade is and what's next
 
-_Last session: 2026-11-25. Damage audit, simpler lobby and garage, CC0 audio, new parts, timed matches. Not committed yet._
+_Last session: 2026-11-25. Rooms, matches, audio and parts were committed in acfd554. The maps came after that and are not committed yet._
 
 ## Where we are
 - **The glade is endless in both directions** (`src/gen.js`):
@@ -106,6 +106,29 @@ _Last session: 2026-11-25. Damage audit, simpler lobby and garage, CC0 audio, ne
   - Online, cars wear the room colour (`paint: -1`) and name tags use it.
   - `net.on` now supports several listeners per message.
 
+- **Maps:**
+  - `MAPS` in gen.js: `endless` (solo and playtests), `glade`, `crater` (gravity 0.42, moon), `bog` (big ponds), `quarry`. Each arena is six chunks from c=-3, with `wall` chunks (cliffs) beyond.
+  - New chunk types: crater, ramps, woods, yard.
+  - `setMap()` clears the spec cache. `setGravity()` in physics2d (G is now a live binding). `physics.bounds` is a backstop 5 m up the cliffs.
+  - `world.resetChunks()` and `sandbox.resetChunks()` rebuild the world.
+  - `applyMap()` in game.js runs on join, on roster changes outside a match, and at match start. It rebuilds local cars, because their springs are tuned to gravity.
+  - Room setting `map`: the server only allows changes outside a match, and lists the map in `/rooms`. Names are in `MAP_LIST` (catalog.js).
+
+- **In-game polish:**
+  - ≡ is now a `.rl-card` with chips: `#optMap` (solo), `#optBots` / `#optTime` / `#optPrivate` (rooms), `#optPalette`, `#optStats`.
+  - Solo map: picked under the menu (`#soloMap`, saved as `hsg.soloMap`, previewed with `game.previewMap`) or from ≡.
+  - Off-screen arrows: `updatePointers()` in game.js, `#pointers`.
+
+- **Spooky maps:**
+  - `src/spooky.js` has the meshes.
+  - Sandbox: `skeleton` props walk by direct steps (feet friction would just tip them), are held upright unless stunned by a hit, and shatter (`shatter()`) into `bone` props. Synced as world extra `-10-part`.
+  - `pumpkin` props `splat()`, sent as a `splat` message.
+  - Thrown hits go through `hooks.thrownHit` (host) and `shoveCar` to the owner.
+  - Maps `graveyard` and `hallow`; chunk types graves, crypt, patch, village, mansion.
+- **Per-map audio:** `SCENES` in audio.js (track list, ambience bed loaded lazily, far-off calls); `setScene()` is called from `applyMap`.
+- **Sync:** the audit and crowd tests pass with 8 cars and with lag. Quiet cars stay on screen as *away* for 30 s instead of being removed after 4 s; that was the likely cause of "the other player goes invisible".
+- **HUD:** trimmed to the essentials.
+
 ## Test results (headless Chrome)
 All of these pass:
 - **endless:** ±1.8 km, 60 fps, bounded memory.
@@ -120,7 +143,7 @@ All of these pass:
 - **audio:** also passes on the static itch build served from a subfolder.
 - **loadtime.**
 - **newmods:** 10 checks. **match:** 14 checks, passing on three runs in a row.
-- **rooms (lobby):** 19 checks with 5 players. **menu:** 25 checks.
+- **rooms (lobby):** 19 checks with 5 players. **menu:** 25 checks. **maps:** 27 checks. **ingame:** 18 checks. **spooky:** 13. **syncaudit:** 24. **crowd:** 8 cars, with and without lag.
 - **mp:** with `NOBOTS=1`.
 - **mpmods:** loadout sync, glove and ball hits across the network.
 

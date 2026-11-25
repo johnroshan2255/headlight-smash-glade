@@ -2,7 +2,9 @@
 // of circles; it collides with the terrain profile, static circles (trees, pillars, rocks), the
 // fog walls and other bodies. Impulse-based, 3 substeps per frame.
 
-export const G = -19; // a little heavier than earth: snappy jumps
+export let G = -19; // a little heavier than earth: snappy jumps (a live binding: maps change it)
+/** the map's gravity, as a multiple of the usual (Moon Crater: 0.42) */
+export function setGravity(k) { G = -19 * k; }
 const cross = (ax, ay, bx, by) => ax * by - ay * bx;
 
 export class Body {
@@ -129,6 +131,8 @@ export class Physics {
         b.p[0] += b.v[0] * h; b.p[1] += b.v[1] * h; b.a += b.w * h;
         b.updateShapes();
       }
+      // an arena's ends: nothing gets past the cliffs
+      if (this.bounds) { const [L, R] = this.bounds; for (const b of bodies) if (b.enabled && !b.kinematic) { if (b.p[0] < L) { b.p[0] = L; if (b.v[0] < 0) b.v[0] *= -0.3; b.updateShapes(); } else if (b.p[0] > R) { b.p[0] = R; if (b.v[0] > 0) b.v[0] *= -0.3; b.updateShapes(); } } }
       for (const b of bodies) if (b.enabled && b.kinematic) b.updateShapes();
       for (const b of bodies) if (b.enabled && !b.kinematic) this.collideWorld(b);
       this.collideBodies();

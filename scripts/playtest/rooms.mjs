@@ -31,7 +31,7 @@ ok(list.some((r) => r.code === code && r.host === 'Alpha' && r.phase === 'lobby'
 const B = await page('Bravo', { width: 390, height: 780 });
 await B.click('#btnCoop'); await sleep(3300);
 const listed = await B.evaluate(() => [...document.querySelectorAll('#glades button b')].map((b) => b.textContent));
-ok(listed.includes('Alpha'), `Bravo's JOIN list shows Alpha's room (${listed.join(', ')})`);
+ok(listed.some((t) => t.startsWith('Alpha')), `Bravo's JOIN list shows Alpha's room (${listed.join(', ')})`);
 await B.click(`#glades button[data-code="${code}"]`);
 await B.waitForSelector('#roomLobby:not([hidden])', { timeout: 15000 }); await sleep(800);
 let b = await info(B);
@@ -91,7 +91,7 @@ await A.screenshot({ path: `${SHOTS}rooms-lobby-after.png` });
 await A.click('#rlGo'); await sleep(2000);
 ok(!(await inLobby(A)) && !(await inLobby(B)) && (await info(B)).phase === 'playing', 'the host starts the next match and everyone is back in the glade');
 // the host adds bots for the next round from the in-game settings
-await A.keyboard.press('Escape'); await sleep(300); await A.selectOption('#optBots', '2'); await sleep(2500); await A.keyboard.press('Escape');
+await A.keyboard.press('Escape'); await sleep(300); await A.click('#optBots button[data-v="2"]'); await sleep(2500); await A.keyboard.press('Escape');
 ok((await info(B)).bots === 2, 'the host adds 2 bots; the guests see them');
 const errs = [A, B, C, D, E].flatMap((p) => p.errors);
 ok(errs.length === 0, `no page errors ${errs.slice(0, 2).join(' | ')}`);

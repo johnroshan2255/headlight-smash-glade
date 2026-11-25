@@ -1,7 +1,7 @@
 // The room's lobby: who's in the room, everyone's colour (the same colour as someone else = the same
 // team), the host's settings and START. Shown after CREATE / JOIN, before the first match, and
 // again after every match's results. Plain DOM; no engine imports.
-import { PAINTS } from './catalog.js';
+import { PAINTS, MAP_LIST, mapName } from './catalog.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[<>&"]/g, '');
@@ -23,6 +23,7 @@ export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
   chips('rlBots', 'b', (v) => net.send('roomSettings', { bots: v }));
   chips('rlTime', 't', (v) => net.send('roomSettings', { time: v }));
   chips('rlVis', 'v', (v) => net.send('roomSettings', { private: !!v }));
+  for (const b of $('rlMap').querySelectorAll('button')) b.onclick = () => net.isHost && net.phase !== 'playing' && net.send('roomSettings', { map: b.dataset.m });
   $('rlGo').onclick = () => {
     if (net.phase === 'lobby' && net.isHost) net.send('start', {});
     else if (net.phase === 'playing' && !inGame()) enter(); // a match is on: drive straight in
@@ -57,11 +58,14 @@ export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
     for (const b of $('rlBots').querySelectorAll('button')) b.classList.toggle('on', Number(b.dataset.b) === Math.max(0, S.bots));
     for (const b of $('rlTime').querySelectorAll('button')) b.classList.toggle('on', Number(b.dataset.t) === S.time);
     for (const b of $('rlVis').querySelectorAll('button')) b.classList.toggle('on', Number(b.dataset.v) === (S.private ? 1 : 0));
+    for (const b of $('rlMap').querySelectorAll('button')) { b.classList.toggle('on', b.dataset.m === S.map); b.disabled = phase === 'playing'; }
+    const M = MAP_LIST.find((m) => m.id === S.map);
+    $('rlMapInfo').innerHTML = M ? `<b>${M.name}</b> · ${M.blurb}` : '';
     // what happens next
     const left = net.match && phase === 'playing' ? Math.max(0, Math.ceil((net.match.endsAt - net.serverNow()) / 1000)) : 0;
     const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
     $('rlStatus').textContent = phase === 'playing' ? `A match is on: ${clock} left` : phase === 'results' ? 'The match just ended. Back to the lobby in a moment.' : host ? `${players.length} in the room. Start when everyone's ready.` : 'Waiting for the host to start the match.';
-    $('rlGuest').textContent = !host ? `${S.private ? 'Private' : 'Public'} room · ${S.bots > 0 ? `${S.bots} bots` : 'no bots'} · ${S.time} minutes` : '';
+    $('rlGuest').textContent = !host ? `${S.private ? 'Private' : 'Public'} room · ${S.bots > 0 ? `${S.bots} bots` : 'no bots'} · ${S.time} minutes · ${mapName(S.map)}` : '';
     const go = $('rlGo');
     if (phase === 'playing' && !inGame()) { go.hidden = false; go.disabled = false; go.textContent = 'DRIVE IN'; }
     else if (host && phase === 'lobby') { go.hidden = false; go.disabled = false; go.textContent = net.match && net.match.n ? 'START NEXT MATCH' : 'START'; }

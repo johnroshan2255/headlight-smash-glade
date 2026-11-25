@@ -18,9 +18,9 @@ npm run server     # just the Colyseus server (serves dist/ too)
 npm run itch       # static build zip for itch.io: release/headlight-smash-glade-web.zip
 ```
 
-The menu has three buttons. **PLAY** drops you into a solo glade with bots. **CO-OP** is for rooms:
+The menu has three buttons. **PLAY** drops you into a solo glade with bots, on the map shown under the buttons (‹ › picks Endless Glade, The Glade, Moon Crater, The Bog or The Quarry; the world behind the menu switches to show it). **CO-OP** is for rooms:
 - **JOIN:** lists the public rooms (host name, players, waiting or playing). Tap one to join it. For a private room, type its code.
-- **CREATE:** choose **PUBLIC** (listed under JOIN) or **PRIVATE** (code only), the **bots** (0, 2, 4 or 6) and the **minutes**, then CREATE ROOM.
+- **CREATE:** choose the **MAP**, **PUBLIC** (listed under JOIN) or **PRIVATE** (code only), the **bots** (0, 2, 4 or 6) and the **minutes**, then CREATE ROOM.
 - **The room's lobby:** everyone waits here first, not in the glade.
   - It shows who's in the room (the host is marked) and the code (tap it to copy). There's a GARAGE button to pick your ride.
   - **Colours:** each player picks one. Two or more players on the same colour are a **team**: teammates can't hurt each other, and the team's smashes add up.
@@ -30,6 +30,26 @@ The menu has three buttons. **PLAY** drops you into a solo glade with bots. **CO
 - **Bots:** there are none unless the host adds them.
 - **In a room**, cars wear the room colour; your garage paint is used in solo.
 - **Hosting:** the host owns the room. If the host leaves, everyone returns to the menu.
+
+**Maps (rooms):** four arenas, each about 380 m wide with cliffs at both ends, so a match never spreads out. Solo PLAY stays the endless glade.
+- **The Glade:** meadows, a pond, the camp and the shrine bowl. The classic.
+- **Moon Crater:** **low gravity (0.42 g)** under a huge misty moon. Three wide craters and ramp fields: cars and props fly a long way.
+- **The Bog:** four wide, deep ponds with geysers, and woods full of dead trees that snap into floating logs.
+- **The Quarry:** boulder mesas, ruins with a magnet arch, and yards stacked with oil barrels.
+
+- **The Graveyard:** skeletons with ember eyes shuffle between the graves. They don't attack, but they get in your way. Ram one hard (about 6.5 m/s or more, or a blast) and it **shatters into bones**: a skull, the ribs and four long bones. The robot arm and Grabby Hands can pick those up and **throw them at rivals**. Grab a whole skeleton and it shatters where it lands. Skeletons climb back out of their graves later. The scenery has tombstones, crosses, iron railings, crypts and a chapel.
+- **Hallowe'en Hollow:** a haunted village with crooked houses and lit windows, scarecrows, lantern posts, bats and a mansion on the hill, under a huge moon. Pumpkins, glowing jack-o'-lanterns and melons sit everywhere. Ram them and they **splat**, or grab one and **throw it**. They grow back.
+- **Throwing:** anything thrown that hits a car hurts it, and the hit is credited to the thrower (skeleton 34, pumpkin 20, bone 12). The host judges the hit and the victim's owner applies it.
+
+The host picks the map in CREATE or in the room's lobby (between matches only), and everyone's world switches with it. Solo picks one under PLAY or from ≡. The JOIN list shows each room's map. Every map has its own silhouettes: forest, moon crags, drowned trees and reeds, cranes and terraces, graves, or a haunted village. The fog, palette and amber glows stay the same.
+
+**Music and sound per map:** each map plays its own track (all CC0) over its own ambience.
+- Graveyard: Moonlit Lullaby, crickets and crows.
+- Hallowe'en: A Wonderful Nightmare, crickets and crows.
+- Moon: Observing the Star, space winds.
+- Bog: Creepy Forest, swamp.
+- Quarry: Factory ambiance, machinery hum and distant clangs.
+- Glade: its two tracks over the wind.
 
 **Timed matches (CO-OP):**
 - Every room plays matches of **6, 8, 10 or 12 minutes**. You choose the length in CREATE; the host can change it in the room's lobby or from ≡ (it applies from the next match).
@@ -122,6 +142,19 @@ Gadget crates still give a temporary power-up for 25 s:
 - **itch.io zip:** about 6.3 MB and 56 files.
 - **Platform limits:** CrazyGames allows ≤ 20 MB initial download for the mobile homepage, ≤ 250 MB total and ≤ 1500 files. itch.io allows ≤ 1000 files.
 
+## In the glade
+- **≡ menu:** the same compact card as the other menus.
+  - GARAGE, and LEAVE (tap twice; in a room you host, it closes the room).
+  - Solo: a MAP row that switches the map on the spot.
+  - In a room: the code, and for the host BOTS / MINUTES / PUBLIC-PRIVATE.
+  - MUSIC and SOUND, quality, colour or mono, stats, renderer, and a fold-out CONTROLS list.
+- **The corner** shows only your smashes and place. The endless glade also shows hats. Controls hints appear only on your first two drives, and coin pops only for big things.
+- **A player gone quiet** (their phone switched apps) stays on screen marked *away* for up to 30 s, instead of vanishing. A real leave is announced at once.
+- **Arrows to rivals:** a chevron at the screen's edge points at each car you can't see (nearest 7), with its distance in metres.
+  - It's in the car's room colour; solo uses amber.
+  - Teammates' arrows are faint. Close rivals' arrows pulse.
+  - Cars hidden in smoke get no arrow.
+
 ## Controls
 - **Keyboard:**
   - A/D or the arrow keys drive. Pressing the other way brakes, then turns the buggy around.
@@ -170,6 +203,11 @@ Screenshots go to `$HSG_SHOTS` (default: a `hsg-shots` folder in the system temp
 | `rooms.mjs` | rooms and their lobby with 5 players: CREATE public/private, JOIN list, join by code, a wrong code, colour teams (no friendly fire), the host's START, no bots by default, DRIVE IN mid-match, back to the lobby after the results, START NEXT MATCH, the host adds bots. Needs the short-match server (below) |
 | `menu.mjs` | menu chips; the lobby fits every screen with no extra buttons; tap an open glade to join; CREATE; the in-game garage |
 | `mp.mjs` | 2 players: roster, host, bots, sync, guest barrel hit, host hand-over (`NOBOTS=1` for a calm run) |
+| `ingame.mjs` | the solo map picker (menu and ≡), the compact ≡ card on desktop / phone / landscape, LEAVE asks first, arrows point at rivals off both sides |
+| `spooky.mjs` | Graveyard: skeletons walk, a ram shatters one into bones, a thrown bone hurts a rival, skeletons rise again. Hallowe'en: pumpkins splat, a thrown pumpkin hurts. Screenshots |
+| `syncaudit.mjs` | 2 to 3 players, after START, driving, a ride change, smoke, eject, wreck, a map change, a colour change, the next match, a late joiner and a player going quiet: every car seen, drawn, never rebuilt, in the right place |
+| `crowd.mjs [n]` | n players + 2 bots in one room driving about (`LAG=1`: half on a laggy link): every screen sees every car, scores agree, fps |
+| `maps.mjs` | each map loads its layout and gravity (Moon Crater falls at 0.42 g), the cliffs stop you, spawns stay inside; the host switches the map in the lobby and the guest follows; START plays it. Needs the short-match server |
 | `newmods.mjs` | balloon tires (drive, pop to the rims, float on a pond), magnet wheels climb onto a car, square wheels thump, oil spins a car out, smoke hides a car and bots lose it |
 | `match.mjs` | timed matches with 2 players: the clock agrees, a smash scores, results show the same winner on both, no scoring in the break, the next match resets. Also the balloon pop, oil and smoke across the network. Needs `PORT=2568 MATCH_MS=30000 MATCH_BREAK_MS=5000 node server/index.js` |
 | `mpmods.mjs` | loadouts sync, boxing glove and wrecking ball hit across the network |

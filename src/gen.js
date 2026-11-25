@@ -49,11 +49,37 @@ export const HAT_SPOTS = [
 ];
 const HAT_TYPE = { easy: 'meadow', boost: 'meadow', geyser: 'pond', floor: 'pond', pillar: 'bowl', bowl: 'bowl', mesa: 'mesa' };
 
+// ---------------------------------------------------------------- maps
+// 'endless' is the endless glade (solo, and the playtests). The others are arenas for rooms: a fixed
+// row of chunk types, cliff walls past both ends, and their own gravity.
+export const MAPS = {
+  endless: { gravity: 1, theme: 'glade' },
+  glade: { gravity: 1, theme: 'glade', from: -3, layout: ['meadow', 'pond', 'camp', 'camp', 'bowl', 'meadow'] },
+  crater: { gravity: 0.42, theme: 'moon', from: -3, layout: ['ramps', 'crater', 'ramps', 'crater', 'hill', 'crater'], moon: true },
+  bog: { gravity: 1, theme: 'bog', from: -3, layout: ['pond', 'woods', 'pond', 'pond', 'woods', 'pond'], bigPonds: true },
+  quarry: { gravity: 1, theme: 'quarry', from: -3, layout: ['mesa', 'yard', 'ruins', 'yard', 'mesa', 'hill'] },
+  graveyard: { gravity: 1, theme: 'graveyard', from: -3, layout: ['graves', 'crypt', 'graves', 'graves', 'crypt', 'graves'] },
+  hallow: { gravity: 1, theme: 'hallow', from: -3, layout: ['patch', 'village', 'patch', 'mansion', 'village', 'patch'], moon: true },
+};
+let MAP = MAPS.endless, MAP_ID = 'endless';
+export const mapId = () => MAP_ID;
+export const mapInfo = () => MAP;
+/** switch the world's map (every browser in a room does the same, so the world matches) */
+export function setMap(id) {
+  if (!MAPS[id]) id = 'endless';
+  if (id === MAP_ID) return false;
+  MAP = MAPS[id]; MAP_ID = id;
+  cache.clear();
+  return true;
+}
+/** the arena's drivable span [x0, x1], or null for the endless glade */
+export const mapBounds = () => (MAP.layout ? [MAP.from * CHUNK - 5, (MAP.from + MAP.layout.length) * CHUNK + 5] : null); // a few metres up the cliffs
+
 const cache = new Map();
 
 /** Everything about chunk c. Cached; cheap to call. */
 export function chunkSpec(c, seed = WORLD_SEED) {
-  const key = c * 7919 + seed;
+  const key = c * 7919 + seed; // (cleared when the map changes)
   let S = cache.get(key);
   if (S) return S;
   S = makeChunk(c, seed);
@@ -66,11 +92,16 @@ function makeChunk(c, seed) {
   const rng = mulberry(hash(seed, c, 77));
   const x0 = c * CHUNK, x1 = x0 + CHUNK, xm = x0 + CHUNK / 2;
   const d = difficulty(xm);
-  const S = { c, x0, x1, type: 'meadow', ramps: [], barrels: [], trees: [], crates: [], geysers: [], ball: null, pond: null, bowl: null, hill: null, mesa: null, pillars: [], hats: [], arch: null, teeter: null, tornado: null };
-  const hatSpot = HAT_SPOTS.find((h) => h.c === c);
+  const S = { c, x0, x1, type: 'meadow', skeletons: [], graves: [], pumpkins: [], houses: [], ramps: [], barrels: [], trees: [], crates: [], geysers: [], ball: null, pond: null, bowl: null, hill: null, mesa: null, pillars: [], hats: [], arch: null, teeter: null, tornado: null };
+  const arena = !!MAP.layout;
+  const hatSpot = arena ? null : HAT_SPOTS.find((h) => h.c === c); // hats live in the endless glade
 
   // ---------------------------------------------------------------- choose the chunk type
-  if (c === 0 || c === -1) S.type = 'camp';
+  if (arena) {
+    const i = c - MAP.from;
+    S.type = i < 0 || i >= MAP.layout.length ? 'wall' : MAP.layout[i];
+    if (S.type === 'wall') S.wall = i < 0 ? { edge: MAP.from * CHUNK, dir: -1 } : { edge: (MAP.from + MAP.layout.length) * CHUNK, dir: 1 };
+  } else if (c === 0 || c === -1) S.type = 'camp';
   else if (hatSpot) S.type = HAT_TYPE[hatSpot.kind];
   else {
     const r = rng();
@@ -112,9 +143,66 @@ function makeChunk(c, seed) {
     S.barrels.push([at(34), 2]);
     S.trees.push(at(44));
     addRamp(at(56), -out, 2.0, 6);
+  } else if (S.type === 'wall') {
+    // past the arena's end: a cliff (nothing lives here)
+  } else if (S.type === 'crater') {
+    // a wide, deep moon crater (a bowl without the shrine)
+    S.bowl = { x: xm, half: 22, depth: 7.5, ref: base(xm) };
+    take(xm - 24, xm + 24);
+    { const x = place(2.5, x0 + 2, x0 + 8) ?? place(2.5, x1 - 8, x1 - 2); if (x !== null) S.crates.push(x); }
+    S.barrels.push([xm, 1]);
+  } else if (S.type === 'ramps') {
+    // a launch field: ramps both ways (in low gravity they throw you a long way)
+    addRamp(x0 + 16, 1, 2.6, 7); addRamp(x1 - 16, -1, 2.6, 7);
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+    { const x = place(3); if (x !== null) S.barrels.push([x, 2]); }
+  } else if (S.type === 'woods') {
+    // dead trees to snap into logs (they float), a barrel or two, a crate
+    for (let i = 0; i < 5; i++) { const x = place(2); if (x !== null) S.trees.push(x); }
+    { const x = place(3); if (x !== null) S.barrels.push([x, 1 + Math.floor(rng() * 2)]); }
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+  } else if (S.type === 'yard') {
+    // a quarry yard: stacks and stacks of oil barrels, a ramp, a crate
+    addRampRandom();
+    for (let i = 0; i < 5; i++) { const x = place(3); if (x !== null) S.barrels.push([x, 2 + Math.floor(rng() * 2)]); }
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+  } else if (S.type === 'graves') {
+    // rows of graves; skeletons climb out of some of them and wander about
+    for (let i = 0; i < 9; i++) { const x = place(1.6); if (x !== null) S.graves.push(x); }
+    for (let i = 0; i < 3; i++) { const x = S.graves[i * 2]; if (x !== undefined) S.skeletons.push(x); }
+    if (rng() < 0.6) addRampRandom();
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+    if (rng() < 0.5) { const x = place(3); if (x !== null) S.barrels.push([x, 1]); }
+  } else if (S.type === 'crypt') {
+    // a crypt on a rise, more graves, two skeletons guarding it
+    S.hill = { x: xm, half: 22, h: 4.5 };
+    take(xm - 5, xm + 5);
+    S.crypt = xm;
+    for (let i = 0; i < 6; i++) { const x = place(1.6); if (x !== null) S.graves.push(x); }
+    S.skeletons.push(xm - 9, xm + 9);
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+  } else if (S.type === 'patch') {
+    // a pumpkin patch: pumpkins, jack-o'-lanterns and melons to splat or throw, a scarecrow
+    for (let i = 0; i < 9; i++) { const x = place(1.3); if (x !== null) { const r = rng(); S.pumpkins.push([x, r < 0.3 ? 'lantern' : r < 0.55 ? 'melon' : 'pumpkin', 0.8 + rng() * 0.6]); } }
+    if (rng() < 0.7) addRampRandom();
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+  } else if (S.type === 'village') {
+    // a crooked street: two haunted houses behind, lanterns, pumpkins on the road, a ramp
+    S.houses.push(x0 + 14 + rng() * 6, x1 - 18 - rng() * 6);
+    addRampRandom();
+    for (let i = 0; i < 5; i++) { const x = place(1.3); if (x !== null) S.pumpkins.push([x, rng() < 0.5 ? 'lantern' : 'pumpkin', 0.7 + rng() * 0.5]); }
+    { const x = place(3); if (x !== null) S.barrels.push([x, 2]); }
+    { const x = place(2.5); if (x !== null) S.crates.push(x); }
+  } else if (S.type === 'mansion') {
+    // the haunted mansion on its hill, jack-o'-lanterns all the way up
+    S.hill = { x: xm, half: 26, h: 6 };
+    S.mansion = xm;
+    take(xm - 4, xm + 4);
+    for (let i = 0; i < 6; i++) { const x = place(1.3); if (x !== null) S.pumpkins.push([x, 'lantern', 0.8 + rng() * 0.4]); }
+    S.skeletons.push(xm - 14);
   } else if (S.type === 'pond') {
-    const w = 22 + rng() * 6;
-    S.pond = { x0: xm - w / 2, x1: xm + w / 2, depth: 3.2, ref: base(xm) };
+    const w = MAP.bigPonds ? 36 + rng() * 6 : 22 + rng() * 6;
+    S.pond = { x0: xm - w / 2, x1: xm + w / 2, depth: MAP.bigPonds ? 3.8 : 3.2, ref: base(xm) };
     S.pond.waterY = S.pond.ref - 0.6;
     take(S.pond.x0 - 3, S.pond.x1 + 3);
     const n = 3;
@@ -188,11 +276,14 @@ function makeChunk(c, seed) {
   if (S.bowl) S.hazards.push([S.bowl.x - S.bowl.half - 3, S.bowl.x - 6.5], [S.bowl.x + 6.5, S.bowl.x + S.bowl.half + 3]);
   if (S.mesa) S.hazards.push([x0 + 4, x1 - 4]);
   if (S.arch !== null) S.hazards.push([S.arch - 8, S.arch + 8]);
+  for (const x of S.skeletons) S.hazards.push([x - 3, x + 3]);
+  for (const [x] of S.pumpkins) S.hazards.push([x - 2, x + 2]);
   return S;
 }
 
 /** the chunk's own shaping, added on top of base() (zero at the chunk's edges) */
 export function featureHeight(S, x, y) {
+  if (S.wall) { const d = (x - S.wall.edge) * S.wall.dir; if (d > 0) y += 34 * smooth(0, 16, d) + d * 0.4; } // the arena's end: a cliff
   if (S.pond) {
     const P = S.pond, pc = (P.x0 + P.x1) / 2, ph = (P.x1 - P.x0) / 2;
     const k = 1 - smooth(0.62, 1.05, Math.abs(x - pc) / ph);

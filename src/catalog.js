@@ -61,6 +61,18 @@ export const PAINTS = [
   { name: 'Burnt Orange', rgb: [0.6, 0.31, 0.12] }, { name: 'Sand', rgb: [0.58, 0.5, 0.36] },
 ];
 
+/** maps for rooms (solo PLAY is always the endless glade). The layouts live in gen.js. */
+export const MAP_LIST = [
+  { id: 'glade', name: 'The Glade', short: 'GLADE', blurb: 'Meadows, a pond and the shrine bowl. The classic.' },
+  { id: 'crater', name: 'Moon Crater', short: 'MOON', blurb: 'Low gravity under a huge moon. Craters and ramps: fly far.' },
+  { id: 'bog', name: 'The Bog', short: 'BOG', blurb: 'Wide ponds, geysers and fallen logs. Bring balloons or jets.' },
+  { id: 'quarry', name: 'The Quarry', short: 'QUARRY', blurb: 'Boulder mesas, ruins and yards stacked with oil barrels.' },
+  { id: 'graveyard', name: 'The Graveyard', short: 'GRAVES', blurb: 'Skeletons wander the graves. Smash them to bones, then throw the bones.' },
+  { id: 'hallow', name: "Hallowe'en Hollow", short: 'HALLOW', blurb: 'A haunted village of jack-o\'-lanterns. Splat pumpkins and melons, or throw them.' },
+];
+export const MAP_IDS = ['endless', ...MAP_LIST.map((m) => m.id)];
+export const mapName = (id) => (MAP_LIST.find((m) => m.id === id) || { name: 'Endless Glade' }).name;
+
 export const HAT_PRICE = 400;
 export const HAT_IDS = ['straw', 'bucket', 'crown', 'antlers', 'cone', 'witch', 'tophat', 'propeller', 'chef', 'pirate', 'viking', 'party', 'halo'];
 

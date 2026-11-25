@@ -11,6 +11,7 @@ import { Body } from './physics2d.js';
 import { RESPAWN_SECONDS, GADGET_KEYS } from './layout.js';
 import { CHUNK, chunkSpec, chunkOf, chunkId, pillarTop, HAT_SPOTS } from './gen.js';
 import { hatMesh } from './hats.js';
+import { skeletonMeshes, boneMeshes, pumpkinMesh, BONE_PARTS, boneShapes, boneMass } from './spooky.js';
 import { silMaterial, glowMaterial } from './sil.js';
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -126,6 +127,8 @@ export class Sandbox {
     this.mat = silMaterial({ sway: 0.3 });
     this.glow = glowMaterial(1);
     this.dust = glowMaterial(0.35);
+    this.paint = silMaterial({ cls: CLS.CHAR, paint: 1 }); // bones and pumpkins: painted, worn
+    this.spook = { ...skeletonMeshes(d), ...boneMeshes(d), pumpkin: pumpkinMesh(d, 'pumpkin'), lantern: pumpkinMesh(d, 'lantern'), melon: pumpkinMesh(d, 'melon') };
     this.meshes = { barrel: barrelMesh(d), log: logMesh(d), stump: stumpMesh(d), tree: deadTreeMesh(d, 13), rock: rockMesh(d, 9), cage: cageMesh(d), crate: crateMesh(d), mine: mineMesh(d), halo: haloSprite(d), plank: plankMesh(d), pivot: pivotMesh(d), funnel: funnelMesh(d) };
     this.time = 0;
     this.chunks = new Map(); // c -> Z (a loaded chunk)
@@ -199,6 +202,15 @@ export class Sandbox {
 
   get activeChunks() { return [...this.chunks.keys()]; }
 
+  /** a new map: drop every loaded chunk and loose prop (they stream back in from the new layout) */
+  resetChunks() {
+    for (const [c, Z] of [...this.chunks]) this.unloadChunk(c, Z);
+    for (const P of this.loose) if (P.alive !== false) this.removeProp(P);
+    this.loose = [];
+    this.gone = [];
+    this.chunkT = 0;
+  }
+
   loadChunk(c) {
     const S = chunkSpec(c), T = this.terrain;
     const Z = { c, S, idle: 0, ents: [], props: [], trees: [], crates: [], geysers: [], slide: null, ball: null, hats: [], teeter: null, funnel: null, statics: [] };
@@ -216,6 +228,22 @@ export class Sandbox {
       }
     };
     for (const [x, n] of S.barrels) stack(x, n);
+    // skeletons, out of their graves (The Graveyard)
+    S.skeletons.forEach((x, i) => {
+      const home = [x, T.height(x) + 0.98];
+      const body = new Body({ mass: 90, shapes: [[0, -0.72, 0.26], [0, -0.1, 0.3], [0, 0.55, 0.24]], inertia: 90 * 0.5, restitution: 0.05, friction: 0.15, kind: 'skeleton', linDamp: 0.3, angDamp: 1.5 }); // slippery bones: they shuffle
+      body.set(home[0], home[1], 0);
+      this.addProp({ id: chunkId(c, 20 + i), kind: 'skeleton', body, home, alive: true, respawn: 0, dir: i % 2 ? 1 : -1, turnT: 3 + i * 2.3, phase: i, ent: this.skeletonEnt() }, Z);
+    });
+    // pumpkins, jack-o'-lanterns and melons (Hallowe'en Hollow)
+    S.pumpkins.forEach(([x, variant, size], i) => {
+      const r = 0.5 * size, home = [x, T.height(x) + r * 0.82];
+      const body = new Body({ mass: 28 * size * size, shapes: [[0, 0, r * 0.88]], restitution: 0.15, friction: 0.8, kind: 'pumpkin', linDamp: 0.1, angDamp: 0.6 });
+      body.set(home[0], home[1], 0);
+      const ent = this.ent(this.spook[variant], this.paint, variant);
+      ent.setLocalScale(size, size, size);
+      this.addProp({ id: chunkId(c, 25 + Math.min(i, 13)), kind: 'pumpkin', variant, size, body, home, alive: true, respawn: 0, ent }, Z);
+    });
     // dead trees that snap into logs
     S.trees.forEach((x, i) => {
       const g = T.height(x), id = chunkId(c, 40 + i);
@@ -317,14 +345,99 @@ export class Sandbox {
   get ramps() { const out = []; for (const Z of this.chunks.values()) out.push(...Z.S.ramps); return out; }
   get bowls() { const out = []; for (const Z of this.chunks.values()) if (Z.S.bowl) out.push(Z.S.bowl); return out; }
 
+  // ---------------------------------------------------------------- skeletons, bones, pumpkins
+  skeletonEnt() {
+    const root = new pc.Entity('skeleton');
+    const part = (mesh, name, x, y, z) => { const e = new pc.Entity(name); e.addComponent('render', { meshInstances: [new pc.MeshInstance(mesh, this.paint)], layers: [this.layer.id], castShadows: false, receiveShadows: false }); e.setLocalPosition(x, y, z); root.addChild(e); return e; };
+    part(this.spook.torso, 'torso', 0, 0.05, 0);
+    root.legs = [part(this.spook.leg, 'legL', 0, -0.4, -0.12), part(this.spook.leg, 'legR', 0, -0.4, 0.12)];
+    root.arms = [part(this.spook.arm, 'armL', 0, 0.42, -0.26), part(this.spook.arm, 'armR', 0, 0.42, 0.26)];
+    this.app.root.addChild(root);
+    return root;
+  }
+  /** a skeleton breaks into its bones (host): a skull, the ribs and four long bones, all flying */
+  shatter(P, by, vx = 0, vy = 0) {
+    if (!this.isHost || P.alive === false || P.kind !== 'skeleton') return;
+    const b = P.body;
+    P.alive = false; P.heldBy = null; P.thrown = false; P.body.enabled = false; P.respawn = 14 + Math.random() * 8;
+    this.hooks.sound('bones', { x: b.p[0] });
+    for (let i = 0; i < 8; i++) this.fx.add({ kind: 'dust', x: b.p[0] + (Math.random() - 0.5), y: b.p[1] - 0.5 + Math.random() * 1.4, z: 0.6, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2, t: 0, life: 0.8, size: 0.5 });
+    const parts = ['skull', 'ribs', 'bone', 'bone', 'bone', 'bone'], ys = [0.6, 0.15, -0.3, -0.5, -0.7, 0.3];
+    parts.forEach((part, i) => this.spawnBone(part, b.p[0] + (Math.random() - 0.5) * 0.4, b.p[1] + ys[i], vx * (0.6 + Math.random() * 0.6) + (Math.random() - 0.5) * 5, Math.abs(vy) * 0.4 + 3 + Math.random() * 5, by));
+    if (by) this.hooks.smashed && this.hooks.smashed('bones', by);
+  }
+  spawnBone(part, x, y, vx, vy, by, id = null) {
+    const body = new Body({ mass: boneMass(part), shapes: boneShapes(part), inertia: boneMass(part) * 0.12, restitution: 0.3, friction: 0.6, kind: 'bone', linDamp: 0.05, angDamp: 0.3 });
+    body.set(x, y, Math.random() * 6.28);
+    body.v[0] = vx; body.v[1] = vy; body.w = (Math.random() - 0.5) * 14;
+    const P = this.addProp({ id: id ?? this.nextDyn++, kind: 'bone', part, body, alive: true, by, life: 22, ent: this.ent(this.spook[part], this.paint, part) });
+    this.loose.push(P);
+    return P;
+  }
+  /** a pumpkin or melon bursts (host): pulp everywhere, it grows back later */
+  splat(P, by) {
+    if (!this.isHost || P.alive === false || P.kind !== 'pumpkin') return;
+    P.alive = false; P.heldBy = null; P.thrown = false; P.body.enabled = false; P.respawn = 18 + Math.random() * 10;
+    this.splatFx(P);
+    this.net.send('splat', { id: P.id });
+    if (by) this.hooks.smashed && this.hooks.smashed('splat', by);
+  }
+  /** a guest's copy: the host splatted it */
+  onSplat(msg) { const P = this.dyn.get(msg.id); if (P && !this.isHost) { this.splatFx(P); P.alive = false; P.body.enabled = false; } }
+  splatFx(P) {
+    const b = P.body, melon = P.variant === 'melon', s = P.size || 1;
+    this.hooks.sound('splat', { x: b.p[0] });
+    const cols = melon ? [[120, 40, 35], [70, 90, 40], [30, 25, 20]] : [[150, 80, 25], [120, 60, 20], [190, 150, 80]];
+    for (let i = 0; i < 26 * s; i++) { const a = Math.random() * Math.PI; const sp = 3 + Math.random() * 8; this.fx.add({ kind: 'pulp', col: cols[i % 3], x: b.p[0], y: b.p[1], z: 0.8, vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1), vy: Math.sin(a) * sp, t: 0, life: 0.7 + Math.random() * 0.6, size: 0.1 + Math.random() * 0.16, g: -19 }); }
+    if (P.variant === 'lantern') this.fx.sparkBurst(b.p[0], b.p[1], 10, 5);
+  }
+  /** skeletons shuffle about (host): upright, back and forth near their graves, rising again later */
+  spookyUpdate(dt, cars, host) {
+    for (const Z of this.chunks.values()) for (const P of Z.props) {
+      if (P.kind !== 'skeleton' && P.kind !== 'pumpkin') continue;
+      const b = P.body;
+      if (P.alive === false) {
+        if (!host) continue;
+        P.respawn -= dt;
+        if (P.respawn <= 0 && !cars.some((c) => Math.abs(c.body.p[0] - P.home[0]) < 3)) {
+          P.alive = true; P.thrown = false; b.enabled = true; b.kinematic = false; b.noBodyCollide = false;
+          b.set(P.home[0], P.home[1] + (P.kind === 'skeleton' ? 0.2 : 1.5), 0); b.v[0] = b.v[1] = 0; b.w = 0;
+          if (P.kind === 'skeleton') { P.riseT = 1.5; P.stunT = 0; this.hooks.sound('rumble', { x: P.home[0] }); for (let i = 0; i < 10; i++) this.fx.add({ kind: 'dust', x: P.home[0] + (Math.random() - 0.5) * 1.4, y: P.home[1] - 0.9, z: 0.6, vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, t: 0, life: 1, size: 0.6 }); }
+        }
+        continue;
+      }
+      if (!host || P.kind !== 'skeleton' || P.heldBy || b.kinematic) continue;
+      P.riseT = Math.max(0, (P.riseT || 0) - dt);
+      // knocked flat: it falls apart (not while it's still climbing out of its grave)
+      if (P.riseT <= 0 && Math.abs(Math.atan2(Math.sin(b.a), Math.cos(b.a))) > 1.15) { this.shatter(P, P.lastBy || null, b.v[0], b.v[1]); continue; }
+      // stiff-legged: they stand straight, except for a moment after a hit (when they can topple over)
+      P.stunT = Math.max(0, (P.stunT || 0) - dt);
+      if (P.stunT <= 0) { b.a = Math.atan2(Math.sin(b.a), Math.cos(b.a)) * Math.max(0, 1 - dt * 10); b.w *= Math.max(0, 1 - dt * 12); }
+      P.turnT -= dt;
+      // blocked (a car in the way, a slope too steep): after a moment it turns round
+      P.walkT = (P.walkT || 0) + dt;
+      if (P.walkT > 1.5) { const blocked = Math.abs(b.p[0] - (P.walkX ?? b.p[0] + 9)) < 0.4; P.walkT = 0; P.walkX = b.p[0]; if (blocked) P.turnT = 0; }
+      const far = (b.p[0] - P.home[0]) * P.dir > 12;
+      if (P.turnT <= 0 || far) { P.dir = -P.dir; P.turnT = 4 + Math.random() * 6; }
+      // a shuffling step: moved directly (friction at the feet would just tip it), still a body for cars to hit
+      if (b.grounded > 0 && Math.abs(b.v[0]) < 2.5) { const step = P.dir * 0.95 * dt; const ahead = this.terrain.height(b.p[0] + step * 20) - this.terrain.height(b.p[0]); if (ahead < 0.9) { b.p[0] += step; b.updateShapes(); } else P.turnT = 0; }
+    }
+  }
+
   // ---------------------------------------------------------------- contacts
   propContact(P, other, sp) {
     const car = other && other.car;
     // a thrown prop goes off when it lands on something
+    if (P.thrown && car && car.id !== P.thrownBy && sp > 3 && this.isHost && P.alive && this.hooks.thrownHit) this.hooks.thrownHit(P, car, sp);
     if (P.thrown && sp > 3 && this.isHost && P.alive && (!car || car.id !== P.thrownBy)) {
       if (P.kind === 'barrel') this.light(P, P.thrownBy, 0.05);
+      if (P.kind === 'skeleton') this.shatter(P, P.thrownBy, P.body.v[0], P.body.v[1]);
+      if (P.kind === 'pumpkin') this.splat(P, P.thrownBy);
       P.thrown = false;
     }
+    // a thrown thing (a bone, a pumpkin) hitting a skeleton or a pumpkin breaks it too
+    const op = other && other.prop;
+    if (this.isHost && op && op.thrown && sp > 4) { if (P.kind === 'skeleton') this.shatter(P, op.thrownBy, other.v[0], other.v[1]); if (P.kind === 'pumpkin') this.splat(P, op.thrownBy); }
     if (!car) {
       if (P.kind === 'barrel' && sp > 11 && this.isHost && P.alive) this.light(P, null);
       return;
@@ -337,6 +450,8 @@ export class Sandbox {
       if (P.kind === 'barrel' && sp > 7 && P.alive) this.light(P, car.id);
       if (P.kind === 'ball' && sp > 4.5 && this.time - P.lastHit > 0.3) this.ballHit(P, car.id);
       if (P.kind === 'boulder' && P.held) this.releaseSlide(P.slide);
+      if (P.kind === 'skeleton') { P.lastBy = car.id; P.stunT = 1.2; if (sp > 6.5) this.shatter(P, car.id, car.body.v[0], car.body.v[1]); }
+      if (P.kind === 'pumpkin' && sp > 5) this.splat(P, car.id);
     } else if (car.local) {
       if (this.time - (this.sentHit.get(P.id) || 0) < 0.2) return;
       this.sentHit.set(P.id, this.time);
@@ -358,6 +473,8 @@ export class Sandbox {
     if (P.kind === 'barrel' && msg.sp > 7) this.light(P, by);
     if (P.kind === 'ball' && msg.sp > 4.5 && this.time - P.lastHit > 0.3) this.ballHit(P, by);
     if (P.kind === 'boulder' && P.held) this.releaseSlide(P.slide);
+    if (P.kind === 'skeleton') { P.lastBy = by; P.stunT = 1.2; if (msg.sp > 6.5) this.shatter(P, by, msg.v[0], msg.v[1]); }
+    if (P.kind === 'pumpkin' && msg.sp > 5) this.splat(P, by);
   }
 
   /** a punch, a plow, a wrecking ball or a shockwave on a prop: host applies it */
@@ -369,6 +486,8 @@ export class Sandbox {
     if (P.kind === 'barrel' && sp > 7) this.light(P, by);
     if (P.kind === 'ball' && this.time - P.lastHit > 0.3) this.ballHit(P, by);
     if (P.kind === 'boulder' && P.held) this.releaseSlide(P.slide);
+    if (P.kind === 'skeleton' && sp > 6) this.shatter(P, by, vx, vy);
+    if (P.kind === 'pumpkin' && sp > 5) this.splat(P, by);
   }
 
   treeHit(Tr, b) {
@@ -456,6 +575,7 @@ export class Sandbox {
     for (const Tr of this.trees.values()) if (!Tr.snapped && Math.abs(Tr.x - x) < 3.4 * size && y < Tr.g + 6) this.snapTree(Tr, Math.sign(Tr.x - x) || 1, by);
     for (const sl of this.slides.values()) if (!sl.released && sl.rocks.some((R) => Math.hypot(R.body.p[0] - x, R.body.p[1] - y) < 6 * size)) this.releaseSlide(sl);
     for (const P of this.balls) if (P.alive && Math.hypot(P.body.p[0] - x, P.body.p[1] - y) < 5 * size && this.time - P.lastHit > 0.3) this.ballHit(P, by);
+    for (const P of this.dyn.values()) if (P.alive !== false && (P.kind === 'skeleton' || P.kind === 'pumpkin') && Math.hypot(P.body.p[0] - x, P.body.p[1] - y) < 4.5 * size) { if (P.kind === 'skeleton') this.shatter(P, by, (P.body.p[0] - x) * 2, 6); else this.splat(P, by); }
   }
 
   // ---------------------------------------------------------------- the robot arm: grab, carry, throw
@@ -464,7 +584,7 @@ export class Sandbox {
     let best = null, bd = reach;
     const p = car.body.p;
     for (const P of this.dyn.values()) {
-      if (P.alive === false || P.heldBy || !P.body.enabled || !['barrel', 'boulder', 'log', 'mine'].includes(P.kind)) continue;
+      if (P.alive === false || P.heldBy || !P.body.enabled || !['barrel', 'boulder', 'log', 'mine', 'bone', 'skeleton', 'pumpkin'].includes(P.kind)) continue;
       if (P.kind === 'barrel' && P.fuse > 0) continue;
       const dd = Math.hypot(P.body.p[0] - p[0], P.body.p[1] - p[1]);
       if (dd < bd) { bd = dd; best = P; }
@@ -588,6 +708,7 @@ export class Sandbox {
     const host = this.isHost, t = wallT();
     this.stream(cars.filter((c) => host || c.local).map((c) => c.body.p[0]).concat(this.camX ?? []), dt);
     this.carry(cars);
+    this.spookyUpdate(dt, cars, host);
     // barrels: fuses, respawn
     for (const B of this.barrels) {
       if (B.alive && B.fuse > 0) {
@@ -614,7 +735,7 @@ export class Sandbox {
     }
     if (host) for (let i = this.loose.length - 1; i >= 0; i--) {
       const L = this.loose[i];
-      if (L.kind !== 'log' || L.heldBy) continue;
+      if ((L.kind !== 'log' && L.kind !== 'bone') || L.heldBy) continue;
       L.life -= dt;
       if (L.life <= 0) { if (L.tree && L.tree.log === L) L.tree.log = null; this.removeProp(L); this.loose.splice(i, 1); }
     }
@@ -701,6 +822,16 @@ export class Sandbox {
     const b = P.body;
     e.setPosition(b.p[0], b.p[1], P.kind === 'plank' ? -0.32 : 0);
     e.setEulerAngles(0, P.kind === 'barrel' || P.kind === 'mine' ? 20 : 0, (b.a * 180) / Math.PI);
+    if (P.kind === 'skeleton') { // a stiff shuffle: legs swing, arms reach forward and sway
+      const dtA = Math.min(0.1, Math.max(0, this.time - (P.animT ?? this.time))), vx = P.lastX === undefined || dtA <= 0 ? 0 : (b.p[0] - P.lastX) / dtA;
+      P.animT = this.time; P.lastX = b.p[0];
+      if (Math.abs(vx) > 0.15) P.face = Math.sign(vx);
+      P.phase = (P.phase || 0) + Math.min(2.5, Math.abs(vx)) * dtA * 3.2;
+      const sw = Math.sin(P.phase) * 0.55 * Math.min(1, Math.abs(vx) + (P.heldBy ? 1 : 0));
+      e.setLocalScale(P.face || 1, 1, 1);
+      e.legs[0].setLocalEulerAngles(0, 0, sw * 57); e.legs[1].setLocalEulerAngles(0, 0, -sw * 57);
+      e.arms[0].setLocalEulerAngles(0, 0, 70 - sw * 25); e.arms[1].setLocalEulerAngles(0, 0, 80 + sw * 25);
+    }
     if (P.kind === 'rocket') e.setLocalScale(0.6, 1.4, 0.6);
   }
 
@@ -725,7 +856,7 @@ export class Sandbox {
       const B = P.body;
       const moved = P.heldBy || (!B.kinematic && (Math.abs(B.v[0]) + Math.abs(B.v[1]) + Math.abs(B.w) > 0.05));
       if (!full && !moved) continue;
-      b.push([P.id, r2(B.p[0]), r2(B.p[1]), r2(B.a), P.alive === false ? 0 : 1, P.kind === 'log' ? (P.tree ? P.tree.id : 0) : P.kind === 'mine' ? -2 : P.kind === 'rocket' ? -3 : -1, P.heldBy || 0]);
+      b.push([P.id, r2(B.p[0]), r2(B.p[1]), r2(B.a), P.alive === false ? 0 : 1, P.kind === 'log' ? (P.tree ? P.tree.id : 0) : P.kind === 'mine' ? -2 : P.kind === 'rocket' ? -3 : P.kind === 'bone' ? -10 - BONE_PARTS.indexOf(P.part) : -1, P.heldBy || 0, P.thrown ? P.thrownBy : 0]);
     }
     const trees = [], crates = [], slides = [], balls = [], geysers = [];
     for (const Tr of this.trees.values()) if (Tr.snapped) trees.push(Tr.id);
@@ -746,8 +877,13 @@ export class Sandbox {
       const listed = new Set(msg.b.map((r) => r[0]));
       for (const P of [...this.loose]) if (!listed.has(P.id) && act.has(chunkOf(P.body.p[0]))) drop(P);
     }
-    for (const [id, x, y, a, alive, extra, holder] of msg.b) {
+    for (const [id, x, y, a, alive, extra, holder, thrownBy] of msg.b) {
       let P = this.dyn.get(id);
+      if (!P && extra <= -10 && alive) { // a bone from a skeleton the host shattered
+        if (!this.chunks.has(chunkOf(x))) continue;
+        P = this.spawnBone(BONE_PARTS[-10 - extra] || 'bone', x, y, 0, 0, null, id);
+        P.body.kinematic = true;
+      }
       if (!P && extra !== -1 && alive) {
         if (!this.chunks.has(chunkOf(x))) continue;
         // a prop born on the host: a log (extra = tree id), a mine (-2) or a rocket (-3)
@@ -770,12 +906,14 @@ export class Sandbox {
       if (!P) continue;
       P.target = [x, y, a];
       P.heldBy = holder || null;
+      P.thrown = !!thrownBy; P.thrownBy = thrownBy || null;
       P.body.noBodyCollide = !!holder;
       if (msg.full && P.ent === null) continue;
       const was = P.alive !== false;
       P.alive = !!alive;
-      if ((P.kind === 'mine' || P.kind === 'rocket' || P.kind === 'log') && was && !alive) { if (P.tree && P.tree.log === P) P.tree.log = null; this.removeProp(P); }
-      if (P.kind === 'barrel' || P.kind === 'ball') P.body.enabled = !!alive;
+      if (P.kind === 'skeleton' && was && !alive) { const b = P.body; for (let i = 0; i < 8; i++) this.fx.add({ kind: 'dust', x: b.p[0], y: b.p[1] - 0.4 + Math.random(), z: 0.6, vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2, t: 0, life: 0.8, size: 0.5 }); this.hooks.sound('bones', { x: b.p[0] }); }
+      if ((P.kind === 'mine' || P.kind === 'rocket' || P.kind === 'log' || P.kind === 'bone') && was && !alive) { if (P.tree && P.tree.log === P) P.tree.log = null; this.removeProp(P); }
+      if (P.kind === 'barrel' || P.kind === 'ball' || P.kind === 'skeleton' || P.kind === 'pumpkin') P.body.enabled = !!alive;
       if (!was && alive) P.body.set(x, y, a);
     }
     const inAct = (id) => act.has(Math.floor(id / 100) - 50000);

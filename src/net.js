@@ -11,7 +11,7 @@ export class Net {
     this.handlers = new Map();
     this.room = null;
     this.code = '';
-    this.settings = { private: false, bots: 0, time: 8 }; // the room's: hidden? how many bots (-1 = fill)? minutes per match
+    this.settings = { private: false, bots: 0, time: 8, map: 'endless' }; // the room's: hidden? how many bots (-1 = fill)? minutes per match
     this.match = null; // { n, endsAt, over, nextAt } in server time; serverNow() reads that clock
     this.clockOff = 0;
   }
@@ -49,9 +49,9 @@ export class Net {
 
   /** how: 'create' (a new room with these settings), 'join' (an existing room, by code) or
    *  'auto' (join, or create if there's none: the playtests' ?autostart, which also skips the lobby) */
-  async connect(url, { how = 'auto', code = '', name, vehicle, hat, private: priv = false, bots = 0, time = 8 }) {
+  async connect(url, { how = 'auto', code = '', name, vehicle, hat, private: priv = false, bots = 0, time = 8, map = 'glade' }) {
     const client = new Client(url);
-    const opts = { code, name, vehicle, hat, private: priv, bots, time, autostart: how === 'auto' };
+    const opts = { code, name, vehicle, hat, private: priv, bots, time, map, autostart: how === 'auto' };
     const join = how === 'create' ? client.create('glade', opts) : how === 'join' ? client.join('glade', opts) : client.joinOrCreate('glade', opts);
     const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 6000));
     this.room = await Promise.race([join, timeout]);
