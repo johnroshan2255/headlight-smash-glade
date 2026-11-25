@@ -19,6 +19,8 @@ import { Sandbox } from './sandbox2d.js';
 import { Net } from './net.js';
 import { BotBrain, botName } from './bots.js';
 import * as sfx from './audio.js';
+import { OIL_HALF } from './mods.js';
+import { setupRoomLobby, teamCSS, teamName } from './roomlobby.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -108,6 +110,7 @@ export async function startGame(loader) {
   const nameOf = (id) => { const c = cars.get(id); return c ? c.name : 'someone'; };
 
   function makeCar({ id, local, vehicle, colorIdx, name, hat, setup = null }) {
+    if (net.online && setup && id !== 'preview') setup = { ...setup, paint: -1 }; // in a room you wear your room colour (your team)
     const car = new Car({ app, layer, physics, terrain, id, local, vehicle, colorIdx, name, hat, setup });
     car.onWreck = (c) => wreck(c);
     car.body.onContact = (other, sp) => onCarContact(car, other, sp);
@@ -115,6 +118,7 @@ export async function startGame(loader) {
     const tag = document.createElement('div');
     tag.className = 'tag';
     tag.textContent = name;
+    if (net.online) tag.style.color = teamCSS(colorIdx);
     $('tags').appendChild(tag);
     tags.set(id, tag);
     return car;
@@ -126,6 +130,11 @@ export async function startGame(loader) {
     if (t) { t.remove(); tags.delete(id); }
   }
 
+  /** Two cars touch. With two local cars (my bots, my car) each side hurts itself. With a remote
+   *  car the other screen may never see the touch (there my car is an immovable copy), so the
+   *  attacker reports it: the faster car rams, the saw cuts, the car coming down stomps, the
+   *  plow scoops. Its browser sends the victim the push and damage; the victim takes nothing
+   *  from the contact itself. */
   function onCarContact(car, other, sp) {
     if (!car.local || car.wrecked) return;
     const o = other && other.car;
@@ -134,39 +143,69 @@ export async function startGame(loader) {
       fx.sparkBurst((car.body.p[0] + o.body.p[0]) / 2, (car.body.p[1] + o.body.p[1]) / 2 + 0.3, Math.min(16, sp * 1.4), sp * 0.6);
       sfx.play('crunch', { x: car.body.p[0], z: 0 }, { vol: Math.min(1.2, sp / 10) });
     }
-    car.lastHitBy = o; car.lastHitT = performance.now();
     const now = performance.now();
+    car.lastHitBy = o; car.lastHitT = now;
+    const remote = !o.local;
+    const ratio = (from, to) => Math.min(1.6, Math.max(0.6, from.spec.mass / to.spec.mass));
+    // who is driving into whom: velocities along the line between the two cars
+    const dx = o.body.p[0] - car.body.p[0], dy = o.body.p[1] - car.body.p[1], d = Math.hypot(dx, dy) || 1, nx = dx / d, ny = dy / d;
+    // (car.speed is measured before this step's collisions; body velocities here are already after the bounce)
+    const iPush = car.speed, theyPush = o.speed;
+    const send = (key, vx, vy, dmg) => { // report a hit on a remote car (once per target per moment)
+      const T = (car.sentT ||= new Map()), k = `${key}:${o.id}`;
+      if ((T.get(k) || 0) > now) return false;
+      T.set(k, now + 400);
+      shoveCar(o, vx, vy, dmg, car);
+      return true;
+    };
+    // a ram: the harder the hit and the heavier the rammer, the more it hurts
+    if (sp > 6 && Math.abs(ny) < 0.7) { // rams are side-on; coming down from above is a stomp, below
+      const k = (sp - 6) * 2.6;
+      if (!remote) { if ((car.ramT || 0) < now && car.shield <= 0) { car.ramT = now + 350; car.damage(k * ratio(o, car), o); } }
+      else if (iPush >= theyPush && send('ram', nx * Math.min(12, sp * 0.55) * ratio(car, o), 2 + Math.min(4, sp * 0.2), k * ratio(car, o))) {
+        if (car.shield <= 0) car.damage(k * 0.35 * ratio(o, car), o); // the rammer feels it too, less
+      }
+    }
     // landed on from above by pogo coils, giant tires or a steam-roller: crushed
-    const crusher = o.rigP.pogo || o.setup.tire >= 1.6 || o.spec.crusher;
-    if (crusher && o.body.p[1] > car.body.p[1] + 0.5 && (o.body.v[1] < -3 || sp > 5) && (car.crushT || 0) < now) {
+    const crushes = (top, bottom) => (top.rigP.pogo || top.setup.tire >= 1.6 || top.spec.crusher) && top.body.p[1] > bottom.body.p[1] + 0.5;
+    if (!remote && crushes(o, car) && (o.body.v[1] < -3 || sp > 5) && (car.crushT || 0) < now) {
       car.crushT = now + 600;
-      car.damage(30 + sp * 2, o);
+      car.damage(Math.min(60, 30 + sp * 2), o);
       car.body.v[1] -= 4; car.body.w += (Math.random() - 0.5) * 4;
       fx.sparkBurst(car.body.p[0], car.body.p[1] + 0.6, 16, 6);
       sfx.play('crunch', { x: car.body.p[0], z: 0 }, { vol: 1.3 });
     }
+    if (remote && crushes(car, o) && (car.body.v[1] < -3 || sp > 5) && send('crush', 0, -4, Math.min(60, 30 + sp * 2))) { fx.sparkBurst(o.body.p[0], o.body.p[1] + 0.6, 16, 6); sfx.play('crunch', { x: o.body.p[0], z: 0 }, { vol: 1.3 }); }
     // sawblades bite
-    if (o.saw && sp > 1.5 && (car.sawT || 0) < now) { car.sawT = now + 300; car.damage(7 + sp * 1.2, o); fx.sparkBurst(car.body.p[0], car.body.p[1], 10, 7); }
+    if (!remote && o.saw && sp > 1.5 && (car.sawT || 0) < now) { car.sawT = now + 300; car.damage(7 + sp * 1.2, o); fx.sparkBurst(car.body.p[0], car.body.p[1], 10, 7); }
+    if (remote && car.saw && sp > 1.5 && send('saw', nx * 2, 1, 7 + sp * 1.2)) fx.sparkBurst(o.body.p[0], o.body.p[1], 10, 7);
     // the Mega-Plow, the Shrine Dozer's blade and the cow-catcher scoop you up and over
-    const plow = o.gadget === 'plow' || (o.spec.plowish && o.speed > 7) || (o.catcher && o.speed > 4);
-    if (plow && sp > 3) {
-      const b = car.body, d = Math.sign(b.p[0] - o.body.p[0]) || 1;
+    const plows = (c) => c.gadget === 'plow' || (c.spec.plowish && c.speed > 7) || (c.catcher && c.speed > 4);
+    if (!remote && plows(o) && sp > 3) {
+      const b = car.body, dd = Math.sign(b.p[0] - o.body.p[0]) || 1;
       const k = o.gadget === 'plow' ? 1 : 0.55;
-      b.v[0] += d * 9 * k; b.v[1] += 12 * k; b.w += d * -5 * k;
+      b.v[0] += dd * 9 * k; b.v[1] += 12 * k; b.w += dd * -5 * k;
       car.damage(25 * k, o);
       sfx.play('boing', { x: b.p[0], z: 0 });
     }
+    if (remote && plows(car) && sp > 3) {
+      const k = car.gadget === 'plow' ? 1 : 0.55;
+      if (send('plow', (Math.sign(dx) || car.facing) * 9 * k, 12 * k, 25 * k)) sfx.play('boing', { x: o.body.p[0], z: 0 });
+    }
   }
 
+
   /** a hit from a gadget: applied by whoever owns the target car (bots belong to the host) */
+  /** teammates: the same colour in a room (they can't hurt each other) */
+  function sameTeam(a, b) { return !!(net.online && a && b && a !== b && a.colorIdx === b.colorIdx); }
   function shoveCar(target, vx, vy, dmg, by) {
-    if (!target || target.wrecked) return;
+    if (!target || target.wrecked || sameTeam(target, by)) return;
     if (target.local) return applyShove(target, vx, vy, dmg, by);
     const owner = String(target.id).startsWith('bot') ? net.hostId : target.id;
     net.send('shove', { to: owner, car: target.id, v: [r2(vx), r2(vy)], dmg: Math.round(dmg), by: by ? by.id : null });
   }
   function applyShove(c, vx, vy, dmg, by) {
-    if (c.wrecked || c.ghost) return;
+    if (c.wrecked || c.ghost || sameTeam(c, by)) return;
     const b = c.body;
     b.v[0] += vx; b.v[1] += vy; b.w += (Math.random() - 0.5) * Math.min(8, Math.hypot(vx, vy) * 0.4);
     if (by && by !== c) { c.lastHitBy = by; c.lastHitT = performance.now(); }
@@ -254,11 +293,6 @@ export async function startGame(loader) {
     const msg = { id: c.id, killer: killer ? killer.id : null, torn: killers.length > 1 ? killers.map((k) => k.id) : null };
     net.send('wrecked', msg);
     onWrecked(msg);
-    for (const k of killers.length ? killers : [killer]) {
-      if (!k || k === c) continue;
-      k.score++; net.send('score', { killer: k.id });
-      if (k === me) earn(c.isBot || String(c.id).startsWith('bot') ? 'botSmash' : 'smash', 1, { smashes: 1 });
-    }
     c.tornBy = null;
     if (c === me) account.stat({ wrecks: 1 });
     setTimeout(() => {
@@ -289,7 +323,103 @@ export async function startGame(loader) {
     }
     return best ?? ax;
   }
+  // ---------------------------------------------------------------- timed matches (online rooms)
+  // The server runs the clock (6, 8, 10 or 12 minutes). Most smashes when it hits zero wins, then a
+  // short break shows the results and the next match starts with everyone back on zero.
+  let matchN = 0, resultsFor = 0, lastTick = 0, seenPhase = null, enterHook = null, garageHook = null;
+  const esc = (t) => String(t).replace(/[<>&]/g, '');
+  function standings() {
+    return allCars().map((c) => ({ c, name: c.name, score: c.score | 0, bot: c.isBot || String(c.id).startsWith('bot'), me: c === me })).sort((a, b) => b.score - a.score || (a.bot - b.bot) || a.name.localeCompare(b.name));
+  }
+  function onMatch(m) {
+    if (!m) return;
+    const phase = net.phase;
+    // in the room's lobby before the first drive: when the host starts, everyone drops in together
+    if (!started) {
+      if (phase === 'playing' && seenPhase && seenPhase !== 'playing' && roomLobby.open && enterHook) enterHook();
+      seenPhase = phase;
+      return;
+    }
+    seenPhase = phase;
+    if (!me) return;
+    if (phase === 'lobby') { $('matchEnd').hidden = true; roomLobby.show(); return; } // back to the lobby after the results
+    if (m.over) { showResults(m); return; }
+    $('matchEnd').hidden = true;
+    roomLobby.hide();
+    if (m.n === matchN) return;
+    const first = !matchN;
+    matchN = m.n;
+    // a fresh match: everyone back on zero, in their (maybe new) colours, dropping in fresh
+    for (const c of allCars()) c.score = 0;
+    if (me.colorIdx !== net.myColor) applySetup({ ...DEFAULT_SETUP, ...account.setup }, true);
+    syncBots();
+    for (const c of allCars()) if (c.local) { if (c.wrecked) c.unwreck(pickSpawn(c, c.body.p[0])); else c.respawnAt(pickSpawn(c, c.body.p[0])); c.hp = 100; }
+    if (!first) { toast(`Match ${m.n}! Most smashes in ${net.settings.time || 8} minutes wins.`, 3); sfx.play('jingle'); }
+  }
+  function showResults(m) {
+    if (resultsFor === m.n) return;
+    resultsFor = m.n;
+    const rows = standings();
+    // teams: any colour two or more cars share; everyone else is a team of one
+    const groups = new Map();
+    for (const r of rows) { const k = r.c.colorIdx; if (!groups.has(k)) groups.set(k, { k, rows: [], score: 0 }); const G = groups.get(k); G.rows.push(r); G.score += r.score; }
+    const teamMode = net.online && [...groups.values()].some((G) => G.rows.length > 1);
+    const sides = teamMode ? [...groups.values()].sort((a, b) => b.score - a.score) : rows.map((r) => ({ k: r.c.colorIdx, rows: [r], score: r.score }));
+    const top = sides[0], winners = top && top.score > 0 ? sides.filter((G) => G.score === top.score) : [];
+    const label = (G) => (G.rows.length > 1 ? `Team ${teamName(G.k)}` : esc(G.rows[0].name));
+    const pl = (n) => `${n} smash${n === 1 ? '' : 'es'}`;
+    $('meWinner').innerHTML = !winners.length ? 'Nobody smashed anybody!' : winners.length > 1 ? `A draw: ${winners.map(label).join(' & ')}<br><small>${pl(top.score)} each</small>` : `${label(top)} wins!<br><small>${pl(top.score)}</small>`;
+    let rank = 0, prev = null;
+    $('meRows').innerHTML = sides.slice(0, 8).map((G, i) => {
+      if (G.score !== prev) { rank = i + 1; prev = G.score; }
+      const mine = G.rows.some((r) => r.me), who = G.rows.length > 1 ? `${label(G)} <small>${G.rows.map((r) => esc(r.name)).join(', ')}</small>` : `${esc(G.rows[0].name)}${G.rows[0].bot ? ' <small>bot</small>' : ''}`;
+      return `<tr class="${mine ? 'me' : ''}${winners.includes(G) ? ' first' : ''}"><td>${rank}</td><td><i class="dot" style="--c:${net.online ? teamCSS(G.k) : 'transparent'}"></i>${who}</td><td>${G.score}</td></tr>`;
+    }).join('');
+    $('matchEnd').hidden = false;
+    if (!matchN) return; // joined during the break: no coins for a match we didn't play
+    const mySide = sides.find((G) => G.rows.some((r) => r.me)), myRank = mySide ? 1 + sides.filter((G) => G.score > mySide.score).length : 99;
+    if (mySide && winners.includes(mySide)) { earn('win'); toast(teamMode && mySide.rows.length > 1 ? 'Your team won the match!' : 'You won the match!', 3); sfx.play('jingle'); }
+    else if (mySide && mySide.score > 0 && myRank <= 3) earn('podium');
+    else earn('match');
+  }
+  function updateClock() {
+    const m = net.online && net.match && net.phase !== 'lobby' && net.match.n > 0 ? net.match : null, el = $('clock');
+    el.hidden = !m;
+    if (!m) return;
+    if (m.over) {
+      el.classList.remove('hot'); el.classList.add('over');
+      $('clockT').textContent = '0:00'; $('clockSub').textContent = 'MATCH OVER';
+      const left = Math.max(0, Math.ceil((m.nextAt - net.serverNow()) / 1000));
+      $('meNext').textContent = left > 0 ? `NEXT MATCH IN ${left}` : 'GET READY';
+      return;
+    }
+    const left = Math.max(0, Math.ceil((m.endsAt - net.serverNow()) / 1000));
+    $('clockT').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    $('clockSub').textContent = 'MOST SMASHES WINS';
+    el.classList.toggle('hot', left <= 30); el.classList.remove('over');
+    if (left <= 10 && left > 0 && left !== lastTick) { lastTick = left; sfx.play('tick', undefined, { vol: 0.9, wet: 0 }); }
+  }
+  // the room's lobby (before the first match and between matches)
+  const roomLobby = setupRoomLobby({
+    net,
+    enter: () => enterHook && enterHook(),
+    inGame: () => started,
+    garage: () => { if (!started && garageHook) garageHook(); else window.dispatchEvent(new CustomEvent('hsg:garage', { detail: { inGame: started } })); },
+    leave: () => { net.leave(); location.reload(); },
+  });
+  net.on('match', onMatch);
+
   function onWrecked(msg) {
+    // the killers' own browsers credit them (each owns its car's score and coins); runs on every client
+    const victimCar = cars.get(msg.id), botVictim = String(msg.id).startsWith('bot');
+    const inBreak = net.online && net.match && net.match.over; // smashes in the break between matches don't count
+    for (const kid of msg.torn || (msg.killer ? [msg.killer] : [])) {
+      const k = cars.get(kid);
+      if (!k || !k.local || kid === msg.id || inBreak || sameTeam(k, victimCar)) continue;
+      k.score++;
+      net.send('score', { killer: kid });
+      if (k === me) earn(botVictim || (victimCar && victimCar.isBot) ? 'botSmash' : 'smash', 1, { smashes: 1 });
+    }
     const victim = nameOf(msg.id), killer = msg.killer ? nameOf(msg.killer) : null;
     if (msg.torn) { feed(`${msg.torn.map(nameOf).join(' and ')} tore ${victim} in two!`); if (me && msg.torn.includes(me.id)) toast(`You tore ${victim} in two!`, 2); if (me && msg.id === me.id) toast('Torn in two!', 2); return; }
     feed(killer && msg.killer !== msg.id ? `${killer} smashed ${victim}` : `${victim} wrecked`);
@@ -340,7 +470,7 @@ export async function startGame(loader) {
   }
   function honk(c) {
     if (c.gadget === 'horn') return useGadget(c);
-    sfx.play('honk', { x: c.body.p[0], z: 0 }, { vol: c === me ? 0.8 : 1, freq: 220 + (c.colorIdx % 4) * 40 });
+    sfx.play('honk', { x: c.body.p[0], z: 0 }, { vol: c === me ? 0.8 : 1, ride: c.vehicle });
     c.flash = 1;
     if (c.local) net.send('honk', { id: c.id });
   }
@@ -350,7 +480,7 @@ export async function startGame(loader) {
     boom: applyBoom,
     grant: (msg) => onGrant(msg),
     cars: allCars,
-    hat: (id) => { account.foundHat(id); popCoins(60); toast(`You found the ${HATS[id] || id}! It's in your garage.`, 3); sfx.play('pickup'); updateHud(true); },
+    hat: (id) => { account.foundHat(id); popCoins(60); toast(`You found the ${HATS[id] || id}! It's in your garage.`, 3); sfx.play('jingle'); updateHud(true); },
     sound: (name, at) => sfx.play(name, at && { x: at.x, z: 0 }, { vol: 1, maxDist: 60 }),
   } });
   function onGrant(msg) {
@@ -368,7 +498,27 @@ export async function startGame(loader) {
   Car.ctx = {
     sandbox, fx, sfx, net,
     cars: allCars,
+    /** is there oil under this wheel? (a fresh slick doesn't catch the car that dropped it) */
+    slickAt: (car, x, y) => {
+      for (const c of cars.values()) {
+        const S = c.bumperG && c.bumperG.slicks;
+        if (S) for (const k of S) if (Math.abs(x - k.x) < OIL_HALF && Math.abs(y - k.y) < 1.0 && !(c === car && k.age < 1.5)) return true;
+      }
+      return false;
+    },
+    /** hidden in a smoke bomb's cloud? */
+    sameTeam,
+    smokeAt: (x, y) => { for (const c of cars.values()) if (c.bumperG && c.bumperG.hides && c.bumperG.hides(x, y)) return true; return false; },
     shove: shoveCar,
+    /** a stomper's wheels slammed onto another car's roof */
+    stomp: (by, victim, sp) => {
+      const now = performance.now(), T = (by.sentT ||= new Map()), k = `crush:${victim.id}`; // shared with the contact stomp: one landing, one stomp
+      if (victim.wrecked || (T.get(k) || 0) > now) return;
+      T.set(k, now + 600);
+      shoveCar(victim, 0, -4, Math.min(60, 30 + sp * 2), by);
+      fx.sparkBurst(victim.body.p[0], victim.body.p[1] + 0.6, 16, 6);
+      sfx.play('crunch', { x: victim.body.p[0], z: 0 }, { vol: 1.3 });
+    },
     grabCar: (target, by) => routeTo(target, 'grabCar', { by: by.id }, () => applyGrab(target, by.id)),
     throwCar: (target, vx, vy, by) => routeTo(target, 'throwCar', { by: by.id, v: [r2(vx), r2(vy)] }, () => applyThrow(target, vx, vy, by.id)),
     shock: (msg) => { shockwave(msg); net.send('shock', { x: r2(msg.x), y: r2(msg.y), by: msg.by }); },
@@ -416,6 +566,7 @@ export async function startGame(loader) {
     ascii.sceneCam.camera.worldToScreen(w, s);
     el.style.left = `${Math.round(s.x)}px`; el.style.top = `${Math.round(s.y)}px`;
     setTimeout(() => el.remove(), 1300);
+    if (c === me) sfx.play('coins', undefined, { vol: Math.min(1, 0.5 + n / 60), wet: 0 });
     updateHud(true);
   }
   function earn(why, n = 1, stats = null) { popCoins(account.earn(why, n, stats)); }
@@ -442,9 +593,10 @@ export async function startGame(loader) {
     let c = cars.get(s.id);
     if (c && c.local) return;
     if (net.isHost && String(s.id).startsWith('bot')) return; // a late packet from the old host's bots
-    if (!c || c.vehicle !== s.veh || (s.s && c.setupKey !== s.s)) { if (c) removeCar(s.id); c = makeCar({ id: s.id, local: false, vehicle: s.veh, colorIdx: s.col || 0, name: s.n, hat: s.hat, setup: s.s ? unpackSetup(s.s) : null }); }
+    if (!c || c.vehicle !== s.veh || (s.s && c.setupKey !== s.s) || (net.online && c.colorIdx !== (s.col || 0))) { if (c) removeCar(s.id); c = makeCar({ id: s.id, local: false, vehicle: s.veh, colorIdx: s.col || 0, name: s.n, hat: s.hat, setup: s.s ? unpackSetup(s.s) : null }); }
     if (s.gs) { if (c.roofG) c.roofG.setState(s.gs[0]); if (c.bumperG) c.bumperG.setState(s.gs[1]); }
     c.ghost = !!(s.f & 16);
+    c.pop(!!(s.f & 32));
     if (s.n && s.n !== c.name) { c.name = s.n; const t = tags.get(s.id); if (t) t.textContent = s.n; }
     if (s.hat && s.hat !== c.hat) c.setHat(s.hat);
     c.pushRemote(s, performance.now());
@@ -467,7 +619,7 @@ export async function startGame(loader) {
   net.on('torn', (m) => { const c = cars.get(m.id); if (c && !c.local && !c.wrecked) c.tear(m.xs || []); });
   net.on('shove', (m) => { const c = cars.get(m.car); if (c && c.local) applyShove(c, m.v[0], m.v[1], m.dmg || 0, cars.get(m.by) || null); });
   // net.on('glitch', glitch); // ASCII view off
-  net.on('honk', (m) => { const c = cars.get(m.from); if (c) { c.flash = 1; sfx.play('honk', { x: c.body.p[0], z: 0 }, { freq: 220 + (c.colorIdx % 4) * 40 }); } });
+  net.on('honk', (m) => { const c = cars.get(m.from); if (c) { c.flash = 1; sfx.play('honk', { x: c.body.p[0], z: 0 }, { ride: c.vehicle }); } });
   net.on('wrecked', onWrecked);
   net.on('world', (m) => sandbox.applyWorld(m));
   net.on('hitProp', (m) => sandbox.onRemoteHit(m));
@@ -505,8 +657,10 @@ export async function startGame(loader) {
       if (!cars.has(id)) {
         const pick = (o) => { const k = Object.keys(o); return k[Math.floor(Math.random() * k.length)]; };
         const wheels = Math.random() < 0.45 ? 'tires' : pick(WHEELS);
-        const setup = { wheels, tire: wheels === 'tires' || wheels === 'saw' ? Math.round((0.8 + Math.random() * 0.9) * 10) / 10 : 1, roof: Math.random() < 0.75 ? pick(ROOF) : 'none', bumper: Math.random() < 0.75 ? pick(BUMPER) : 'none', hat: HAT_IDS[(i * 5) % HAT_IDS.length] };
-        const car = makeCar({ id, local: true, vehicle: VEHICLES[(i * 3 + 1) % VEHICLES.length].id, colorIdx: i + 1, name: botName(i), hat: setup.hat, setup });
+        const setup = { wheels, tire: ['tires', 'saw', 'magnet', 'square'].includes(wheels) ? Math.round((0.8 + Math.random() * 0.9) * 10) / 10 : 1, roof: Math.random() < 0.75 ? pick(ROOF) : 'none', bumper: Math.random() < 0.75 ? pick(BUMPER) : 'none', hat: HAT_IDS[(i * 5) % HAT_IDS.length] };
+        let col = i + 1;
+        if (net.online) { const used = new Set([...net.players.map((p) => p.color), ...[...bots.keys()].map((b) => cars.get(b) && cars.get(b).colorIdx)]); col = [0, 1, 2, 3, 4, 5, 6, 7].find((k) => !used.has(k)) ?? (i % 8); }
+        const car = makeCar({ id, local: true, vehicle: VEHICLES[(i * 3 + 1) % VEHICLES.length].id, colorIdx: col, name: botName(i), hat: setup.hat, setup });
         car.isBot = true;
         car.respawnAt(pickSpawn(car, me ? me.body.p[0] : 0));
         bots.set(id, new BotBrain(car, sandbox, game));
@@ -591,14 +745,16 @@ export async function startGame(loader) {
     $('roomBox').hidden = !net.online;
     if (!net.online) return;
     $('roomCodeIn').textContent = net.code || 'PUBLIC';
-    $('optBots').value = String(net.settings.bots);
+    $('optBots').value = String(Math.max(0, net.settings.bots));
     $('optPrivate').checked = !!net.settings.private;
     const host = net.isHost;
-    $('optBots').disabled = !host; $('optPrivate').disabled = !host || !net.code;
-    $('roomHintIn').textContent = !net.code ? 'The public glade. Make a private room from the menu: CO-OP, then CREATE.' : host ? `Friends join with code ${net.code}.` : `Friends join with code ${net.code}. The host sets bots and privacy.`;
+    $('optTime').value = String(net.settings.time || 8);
+    $('optBots').disabled = !host; $('optPrivate').disabled = !host || !net.code; $('optTime').disabled = !host;
+    $('roomHintIn').textContent = host ? `Friends join with code ${net.code}. Changes apply from the next match.` : `Friends join with code ${net.code}. The host sets bots, match length and privacy.`;
   };
   $('optBots').addEventListener('change', (e) => net.send('roomSettings', { bots: Number(e.target.value) }));
   $('optPrivate').addEventListener('change', (e) => net.send('roomSettings', { private: e.target.checked }));
+  $('optTime').addEventListener('change', (e) => { net.send('roomSettings', { time: Number(e.target.value) }); toast(`The next match will be ${e.target.value} minutes.`, 2); });
   const openSettings = (open) => {
     $('settings').hidden = !open;
     paused = open && !net.online;
@@ -639,13 +795,15 @@ export async function startGame(loader) {
   }
 
   /** rebuild my buggy with a new setup (from the garage), dropped back in where I was */
-  function applySetup(setup) {
+  function applySetup(setup, force = false) {
     if (!me) return;
-    const key = packSetup({ ...setup, ride: vehicleSpec(setup.ride).id });
-    if (key === me.setupKey) return;
-    const x = me.body.p[0], { id: myId, colorIdx, name } = me;
+    const key = packSetup({ ...setup, ride: vehicleSpec(setup.ride).id, paint: net.online ? -1 : setup.paint });
+    const colorIdx = net.online ? net.myColor : me.colorIdx;
+    if (key === me.setupKey && colorIdx === me.colorIdx && !force) return;
+    const x = me.body.p[0], { id: myId, name, score } = me;
     removeCar(myId);
     me = makeCar({ id: myId, local: true, vehicle: setup.ride, colorIdx, name, hat: setup.hat, setup });
+    me.score = score; // a new ride mid-match keeps your smashes
     me.respawnAt(x, 2);
     net.send('profile', { vehicle: setup.ride, hat: setup.hat });
     toast(`${me.spec.name} is ready.`, 2);
@@ -660,6 +818,12 @@ export async function startGame(loader) {
   // $('optGlyph').addEventListener('change', (e) => { glyph = e.target.value; store.set('glyphSize', glyph); ascii.setOptions({ glyphSize: glyph }); resized(); });
   $('optPalette').addEventListener('change', (e) => { palette = e.target.value; store.set('palette', palette); u.mono.setValue(palette === 'mono' ? 1 : 0); });
   $('optRenderer').addEventListener('change', (e) => { store.set('renderer', e.target.value); location.reload(); });
+  // sound: two sliders, saved by audio.js
+  const vols = sfx.getVolumes();
+  $('optMusic').value = Math.round(vols.music * 100); $('optSfx').value = Math.round(vols.sfx * 100);
+  $('optMusic').addEventListener('input', (e) => sfx.setVolumes({ music: e.target.value / 100 }));
+  $('optSfx').addEventListener('input', (e) => sfx.setVolumes({ sfx: e.target.value / 100 }));
+  $('optSfx').addEventListener('change', () => sfx.play('crunch', undefined, { vol: 0.8 }));
   $('optStats').addEventListener('change', (e) => { showStats = e.target.checked; statsEl.hidden = !showStats; store.set('stats', showStats ? '1' : '0'); });
   // ASCII view off: the HUD toggle
   // const btnAscii = $('btnAscii');
@@ -701,12 +865,16 @@ export async function startGame(loader) {
 
   // name tags over the cars
   const _w = new pc.Vec3(), _s = new pc.Vec3();
+  /** cars inside a smoke cloud vanish from everyone else's screen (you always see yourself) */
+  function updateSmoke() {
+    for (const c of cars.values()) c.inSmoke = c !== me && !c.wrecked && Car.ctx.smokeAt(c.body.p[0], c.body.p[1]);
+  }
   function updateTags() {
     const cam = ascii.sceneCam.camera;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     for (const [id, el] of tags) {
       const c = cars.get(id);
-      if (!c || c.wrecked || !started) { el.style.display = 'none'; continue; }
+      if (!c || c.wrecked || c.inSmoke || !started) { el.style.display = 'none'; continue; }
       _w.set(c.body.p[0], c.body.p[1] + 1.9, 0);
       cam.worldToScreen(_w, _s);
       if (_s.x < -50 || _s.x > W + 50 || _s.y < -20 || _s.y > H + 20) { el.style.display = 'none'; continue; }
@@ -729,7 +897,7 @@ export async function startGame(loader) {
       net.send('car', {
         id: c.id, n: c.name, veh: c.vehicle, col: c.colorIdx, hat: c.hat,
         t: Math.round(performance.now()), p: b.p.map(r2), a: Math.round(b.a * 1000) / 1000, v: b.v.map(r2),
-        f: (c.boosting ? 1 : 0) | (c.wrecked ? 2 : 0) | (c.flash > 0.1 ? 4 : 0) | (c.facing < 0 ? 8 : 0) | (c.ghost ? 16 : 0), g: c.gadget ? GADGET_KEYS.indexOf(c.gadget) + 1 : 0, sc: c.score,
+        f: (c.boosting ? 1 : 0) | (c.wrecked ? 2 : 0) | (c.flash > 0.1 ? 4 : 0) | (c.facing < 0 ? 8 : 0) | (c.ghost ? 16 : 0) | (c.popped ? 32 : 0), g: c.gadget ? GADGET_KEYS.indexOf(c.gadget) + 1 : 0, sc: c.score,
         s: c.setupKey, gs: [c.roofG ? c.roofG.state() : 0, c.bumperG ? c.bumperG.state() : 0],
       });
     }
@@ -763,7 +931,8 @@ export async function startGame(loader) {
     // ASCII view off: the V key and the Glitch-Bomb's forced ASCII
     // if (input.sightPressed) setAscii(!asciiOn);
     if (forcedAsciiT > 0) { forcedAsciiT -= dt; if (!ascii.ascii) { ascii.setOptions({ ascii: true }); resized(); } if (forcedAsciiT <= 0 && !asciiOn) { ascii.setOptions({ ascii: false }); resized(); } }
-    if (started && !paused && me && dt > 1e-5) {
+    if (started && !paused && me && dt > 1e-5 && roomLobby.open) { me.input.dir = 0; me.input.boost = false; } // in the room's lobby: hands off
+    else if (started && !paused && me && dt > 1e-5) {
       const inp = me.input;
       inp.dir = input.dir; inp.boost = input.boost;
       if (input.hopPressed) inp.hop = true;
@@ -819,7 +988,7 @@ export async function startGame(loader) {
     if (toastTimer > 0) { toastTimer -= dt; shownFor += dt; if (toastQueue.length && shownFor > 1.8) { const [m, t] = toastQueue.shift(); showLine(m, t); } else if (toastTimer <= 0) $('toast').hidden = true; } else if (toastQueue.length) { const [m, t] = toastQueue.shift(); showLine(m, t); }
     $('board').hidden = !input.board;
     if (input.board) updateBoard();
-    if (started) { updateHud(); updateTags(); }
+    if (started) { updateSmoke(); updateHud(); updateTags(); updateClock(); }
     statsTimer -= rawDt;
     if (showStats && statsTimer <= 0) {
       statsTimer = 0.5;
@@ -863,20 +1032,38 @@ export async function startGame(loader) {
     account,
     applySetup,
     preview: (setup) => preview(setup),
+    /** CREATE or JOIN a room from the menu: connect, then wait in the room's lobby. onEnter() is
+     *  called when it's time to drive (the host pressed START, or DRIVE IN during a match). */
+    async joinRoom({ how, code, name, private: priv = false, bots = 0, time = 8 }, onEnter, onGarage) {
+      if (!serverUrl) return { error: 'No game server.' };
+      enterHook = onEnter; garageHook = onGarage;
+      const setup = { ...DEFAULT_SETUP, ...account.setup };
+      try {
+        await net.connect(serverUrl, { how, code, name: (name || account.name || 'Driver').slice(0, 16), vehicle: vehicleSpec(setup.ride).id, hat: setup.hat || 'straw', private: priv, bots, time });
+      } catch (err) {
+        console.warn('join failed', err);
+        return { error: how === 'join' ? `No room ${code} (or it's full).` : 'Could not reach the server.' };
+      }
+      seenPhase = net.phase;
+      roomLobby.show();
+      return { ok: true };
+    },
     async begin(e, choice) {
       if (started) return;
       if (e) enterFullscreen();
       sfx.initAudio();
+      sfx.setMusic('glade');
       const name = (choice.name || account.name || 'Driver').slice(0, 16);
       const setup = { ...DEFAULT_SETUP, ...account.setup };
       if (QUERY.get('veh') && account.owns('rides', QUERY.get('veh'))) setup.ride = QUERY.get('veh'); // ?veh= (tests, links)
       const vehicle = vehicleSpec(setup.ride).id;
       const hat = setup.hat || 'straw';
       let color = 0;
-      if (serverUrl && choice.mode !== 'solo') {
+      if (net.online) color = net.myColor; // already in a room (from its lobby)
+      else if (serverUrl && choice.mode !== 'solo') { // ?autostart: join or make the room and drive straight in
         try {
-          await net.connect(serverUrl, { code: choice.code || '', name, vehicle, hat, private: !!choice.private, bots: choice.bots ?? -1 });
-          color = net.color ?? 0;
+          await net.connect(serverUrl, { how: 'auto', code: choice.code || '', name, vehicle, hat, bots: choice.bots ?? -1, time: choice.time ?? 8 });
+          color = net.myColor;
         } catch (err) {
           console.warn('online failed', err);
           toast('Could not reach the server. Driving solo.', 3);
@@ -894,7 +1081,12 @@ export async function startGame(loader) {
       $('meters').hidden = false;
       $('actions').hidden = !touchUI;
       canvas.focus();
-      toast(net.online ? `Dropped into the glade${net.code ? ` (room ${net.code})` : ''}. Smash something!` : 'Solo glade. The bots are already revving.', 3);
+      const mm = net.online && net.match && !net.match.over ? Math.max(1, Math.round((net.match.endsAt - net.serverNow()) / 60000)) : 0;
+      toast(net.online ? `Dropped into the glade${net.code ? ` (room ${net.code})` : ''}.${mm ? ` About ${mm} min left: most smashes wins!` : ' Smash something!'}` : 'Solo glade. The bots are already revving.', 3);
+      window.dispatchEvent(new Event('hsg:closeGarage'));
+      roomLobby.hide();
+      seenPhase = net.phase;
+      if (net.online && net.match) { if (net.phase === 'playing') matchN = net.match.n; else onMatch(net.match); }
       setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ to change your ride' : 'A/D drive · W or Shift boost · Space hop · E gadget · Esc to change your ride', 5), 3200);
       updateHud(true);
     },

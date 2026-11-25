@@ -132,6 +132,7 @@ export class Sandbox {
     this.dyn = new Map(); // id -> networked prop
     this.trees = new Map(); this.crates = new Map(); this.slides = new Map(); this.geysers = new Map();
     this.loose = []; // props born during play: logs, mines, rockets
+    this.gone = []; // host: ids of props removed since the last world message (clients must drop them too)
     this.sentHit = new Map();
     this.sendT = 0;
     this.fullT = 0;
@@ -169,6 +170,7 @@ export class Sandbox {
 
   removeProp(P) {
     P.alive = false;
+    if (this.isHost && this.net.online && P.id >= DYN_ID0) this.gone.push(P.id);
     this.physics.remove(P.body);
     this.dyn.delete(P.id);
     if (P.ent) P.ent.destroy();
@@ -573,6 +575,7 @@ export class Sandbox {
     const body = new Body({ mass: rocket ? 5 : 8, shapes: [[0, 0, rocket ? 0.18 : 0.28]], restitution: 0.1, friction: 0.9, kind });
     body.set(p[0], p[1], Math.atan2(v[1], v[0]));
     body.v[0] = v[0]; body.v[1] = v[1];
+    if (rocket) body.noBodyCollide = true; // a volley's rockets fly through each other; they burst on the ground or beside a car
     const M = this.addProp({ id: this.nextDyn++, kind, body, alive: true, owner, armT: rocket ? 0.25 : 0.7, life: rocket ? 6 : 40, ent: this.ent(this.meshes.mine, this.mat, kind) });
     this.loose.push(M);
     return M;
@@ -633,9 +636,9 @@ export class Sandbox {
       if (M.kind === 'rocket' && M.alive !== false) { const b = M.body; if (!b.kinematic) b.a = Math.atan2(b.v[1], b.v[0]); if (Math.random() < dt * 40) this.fx.sparkBurst(b.p[0], b.p[1], 1, 2); }
       if (!host || M.heldBy) continue;
       const b = M.body;
-      const near = cars.some((c) => !c.wrecked && Math.hypot(c.body.p[0] - b.p[0], c.body.p[1] - b.p[1]) < (M.kind === 'rocket' ? 1.6 : 1.5));
+      const near = cars.some((c) => !c.wrecked && (M.kind !== 'rocket' || c.id !== M.owner) && Math.hypot(c.body.p[0] - b.p[0], c.body.p[1] - b.p[1]) < (M.kind === 'rocket' ? 1.9 : 1.5));
       const landed = M.kind === 'rocket' && M.armT <= 0 && (b.grounded > 0 || b.lastImpact > 2);
-      if (M.life <= 0 || (M.armT <= 0 && near) || landed) { this.removeProp(M); this.loose.splice(i, 1); this.boom(b.p[0], b.p[1], M.kind === 'rocket' ? 0.8 : 1.0, M.owner); }
+      if (M.life <= 0 || (M.armT <= 0 && near) || landed) { this.removeProp(M); this.loose.splice(i, 1); this.boom(b.p[0], b.p[1], M.kind === 'rocket' ? 0.6 : 1.0, M.owner); }
     }
     // geysers (host clock)
     for (const g of this.geysers.values()) {
@@ -730,12 +733,19 @@ export class Sandbox {
     for (const sl of this.slides.values()) if (sl.released) slides.push(sl.id);
     for (const P of this.balls) balls.push([P.id, P.hits]);
     for (const g of this.geysers.values()) geysers.push([g.id, g.phase, r2(g.t)]);
-    this.net.send('world', { b, full: full ? 1 : 0, act: this.activeChunks, tr: trees, cr: crates, sl: slides, bh: balls, g: geysers });
+    this.net.send('world', { b, full: full ? 1 : 0, act: this.activeChunks, tr: trees, cr: crates, sl: slides, bh: balls, g: geysers, gone: this.gone.splice(0) });
   }
 
   applyWorld(msg) {
     if (this.isHost) return;
     const act = new Set(msg.act || []);
+    // props the host has removed (exploded mines and rockets, rotted logs): drop our copies too
+    const drop = (P) => { if (P.tree && P.tree.log === P) P.tree.log = null; this.removeProp(P); this.loose = this.loose.filter((L) => L !== P); };
+    for (const id of msg.gone || []) { const P = this.dyn.get(id); if (P) drop(P); }
+    if (msg.full) { // and anything born during play that the host no longer has at all
+      const listed = new Set(msg.b.map((r) => r[0]));
+      for (const P of [...this.loose]) if (!listed.has(P.id) && act.has(chunkOf(P.body.p[0]))) drop(P);
+    }
     for (const [id, x, y, a, alive, extra, holder] of msg.b) {
       let P = this.dyn.get(id);
       if (!P && extra !== -1 && alive) {

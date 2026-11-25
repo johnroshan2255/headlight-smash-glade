@@ -104,6 +104,11 @@ function meshes(device) {
     nozzle: build((mb) => { addLathe(mb, [[0.0, 0], [0.12, 0], [0.16, 0.25], [0.0, 0.26]], { seg: 8, colFn: P.brass }); addLathe(mb, [[0.0, 0.25], [0.1, 0.26], [0.0, 0.28]], { seg: 8, colFn: AMBER }); }),
     seat: build((mb) => { addBox(mb, { y: 0.1, sx: 0.45, sy: 0.2, sz: 0.45, col: P.red() }); addBox(mb, { y: 0.24, sx: 0.3, sy: 0.06, sz: 0.3, col: AMBER() }); }),
     chute: build((mb) => { addLathe(mb, [[0.0, 0.9], [0.6, 0.85], [1.05, 0.55], [1.15, 0.35]], { seg: 12, sz: 0.5, colFn: (t) => (t > 0.8 ? AMBER() : Math.floor(t * 6) % 2 ? P.tan() : P.red()) }); for (const s of [-1, 0, 1]) addTube(mb, [[1.1 * s, 0.38, 0, 0.012], [0.08 * s, -0.1, 0, 0.012]], { seg: 3, colFn: P.tan }); }),
+    // oil drum with a spout (oil slick) and a smoke canister (smoke bomb), both on the rear bumper
+    oilCan: build((mb) => { addLathe(mb, [[0.0, -0.3], [0.24, -0.3], [0.26, -0.15], [0.24, 0.0], [0.26, 0.15], [0.24, 0.3], [0.0, 0.3]], { seg: 10, warp: (x, y, z) => [x, y, z], colFn: (t) => (t > 0.3 && t < 0.4 ? P.yellow() : t > 0.62 && t < 0.72 ? P.yellow() : K3(0.08, 0.08, 0.08)()) }); addTube(mb, [[0.1, -0.25, 0, 0.05], [0.32, -0.35, 0, 0.04]], { seg: 4, colFn: P.gun }); }),
+    smokePot: build((mb) => { addLathe(mb, [[0.0, -0.22], [0.2, -0.22], [0.2, 0.18], [0.12, 0.26], [0.0, 0.28]], { seg: 10, colFn: (t) => (t > 0.45 && t < 0.58 ? P.cream() : P.olive()) }); for (const x of [-0.08, 0.08]) addTube(mb, [[x, 0.26, 0, 0.04], [x * 1.6, 0.42, 0, 0.03]], { seg: 4, colFn: P.gun }); }),
+    oilSeg: segOf(K3(0.02, 0.02, 0.02), false),
+    glint: build((mb) => addBox(mb, { x: 0.5, sx: 1, sy: 1, sz: 1, col: rgba(0.3, 0.2, 0.09, CLS.GLOW) })), // an oily brown sheen
     pilot: build((mb) => { addLathe(mb, [[0.16, -0.35], [0.18, -0.1], [0.14, 0.12], [0.0, 0.14]], { seg: 8, colFn: P.olive }); addSphere(mb, { y: 0.28, r: 0.12, segW: 6, segH: 5, colFn: P.cream }); for (const s of [-1, 1]) addTube(mb, [[0.07 * s, -0.33, 0, 0.04], [0.1 * s, -0.6, 0.05, 0.035]], { seg: 4, colFn: P.rubber }); }),
   };
   return M;
@@ -166,6 +171,15 @@ export function rigPhysics(kind, wheels0, tire, spec) {
   } else if (kind === 'hover') {
     R.rays = [{ lx: front.lx, r: 0.0 }, { lx: rear.lx, r: 0.0 }];
     R.rest = 1.1; R.kMul = 0.55; R.dMul = 1.7; R.grip = 0; R.hover = true;
+  } else if (kind === 'balloon') { // big, soft, bouncy, floats; pops to bare rims (car.popped)
+    R.rays = wheels0.map((w) => ({ lx: w.lx, r: Math.max(0.45, w.r * 1.45) }));
+    R.rest = Math.max(R.rest, 0.4); R.kMul = 0.6; R.dMul = 0.32; R.grip = 1.15; R.balloon = true;
+  } else if (kind === 'magnet') { // cling to metal and stone: other cars, barrels, boulders
+    R.rays = wheels0.map((w) => ({ lx: w.lx, r: w.r * tire }));
+    R.grip = 1.7; R.magnet = true;
+  } else if (kind === 'square') { // the corners lift the car every quarter turn, and bite
+    R.rays = wheels0.map((w) => ({ lx: w.lx, r: w.r * tire }));
+    R.grip = 2.1; R.accelMul = 0.92; R.dMul = 1.5; R.square = true;
   }
   return R;
 }
@@ -401,6 +415,9 @@ class WreckBall extends Gadget {
       if (k >= 1) { this.slam = null; if (car.local) this.impact(); } // back to physics, at full slamming speed
       return;
     }
+    // the car was teleported (a respawn, a garage swap): the ball comes along, hanging under the crane
+    this.hitch(_a);
+    if (Math.hypot(this.p[0] - _a[0], this.p[1] - _a[1]) > this.L * 1.6) { this.p[0] = _a[0]; this.p[1] = _a[1] - this.L * 0.8; this.v[0] = car.body.v[0]; this.v[1] = car.body.v[1]; }
     this.v[1] += G * dt;
     this.v[0] *= 1 - dt * 0.4; this.v[1] *= 1 - dt * 0.2;
     this.p[0] += this.v[0] * dt; this.p[1] += this.v[1] * dt;
@@ -434,8 +451,9 @@ class WreckBall extends Gadget {
       if (d < R) this.ctx.sandbox.shove(P.id, (Math.sign(dx) || car.facing) * 7, 9, car.id, 12);
     }
   }
-  /** smash whatever it swings into (owner only) */
+  /** smash whatever it swings into (owner only; a slam counts only where it lands) */
   smash() {
+    if (this.slam) return;
     const car = this.car, now = performance.now();
     for (const o of this.others()) {
       const ob = o.body, rr = ob.bound * 0.75 + 0.5;
@@ -530,7 +548,13 @@ class Mortar extends Gadget {
       this.queue.splice(i, 1);
       const b = this.car.body, f = this.car.facing;
       this.at(0.15, this.car.roofTop + 0.9, _a); // the tube mouths
-      const v = [b.v[0] * 0.5 + f * (6 + Math.random() * 7), 16 + Math.random() * 4];
+      // aim the volley at the nearest rival ahead (spread so the rockets bracket them); else lob ahead
+      const vy = 16 + Math.random() * 2, T = (2 * vy) / -G;
+      let tgt = null, best = 32;
+      for (const o of this.others()) { const dx = (o.body.p[0] - _a[0]) * f; if (dx > 4 && dx < best) { best = dx; tgt = o; } }
+      const spread = (this.fired = (this.fired || 0) + 1) % 4 - 1.5; // -1.5, -0.5, 0.5, 1.5
+      const vx = tgt ? (tgt.body.p[0] + tgt.body.v[0] * T * 0.6 - _a[0]) / T + spread * 0.9 : b.v[0] * 0.5 + f * (6 + Math.random() * 7);
+      const v = [vx, vy];
       this.ctx.sandbox.spawnProjectile('rocket', [_a[0], _a[1]], v, this.car.id);
       this.ctx.fx.sparkBurst(_a[0], _a[1], 8, 5);
       this.ctx.sfx.play('whoosh', { x: _a[0], z: 0 }, { vol: 0.5 });
@@ -935,8 +959,101 @@ class Hands extends Gadget {
   }
 }
 
+// ---------------------------------------------------------------- bumper: the oil slick
+export const OIL_LIFE = 11, OIL_HALF = 2.3;
+class Oil extends Gadget {
+  constructor(car, ctx) {
+    super(car, ctx);
+    this.can = this.attach(this.A.oilCan, 'oilCan');
+    this.slicks = []; // { x, y, age }: on every screen (sent in the snapshot)
+    this.vis = [0, 1].map(() => ({ segs: Array.from({ length: 6 }, () => this.e(this.A.oilSeg, 'oil')), glint: Array.from({ length: 6 }, () => this.e(this.A.glint, 'oilGlint', null, this.A.glow)) }));
+  }
+  fire() {
+    const car = this.car;
+    if (this.cd > 0 || car.wrecked || car.ghost) return;
+    this.cd = 7;
+    this.at(-car.tailX - OIL_HALF + 0.4, 0, _a);
+    const x = _a[0];
+    this.slicks.push({ x, y: car.terrain.height(x), age: 0 });
+    if (this.slicks.length > 2) this.slicks.shift();
+    this.ctx.sfx.play('slick', { x, z: 0 });
+    this.at(-car.tailX, 0.2, _b);
+    for (let i = 0; i < 12; i++) this.ctx.fx.add({ kind: 'debris', x: _b[0], y: _b[1], z: 0.6, vx: -car.facing * (1 + Math.random() * 4) + car.body.v[0] * 0.5, vy: Math.random() * 3, t: 0, life: 0.8, size: 0.08 + Math.random() * 0.1, g: -19, rot: Math.random() * 6, spin: 8 });
+  }
+  update(dt) { super.update(dt); }
+  sync(dt) {
+    const car = this.car, on = !car.wrecked && !car.ghost;
+    this.can.enabled = on;
+    if (on) this.place(this.can, -car.tailX + 0.15, 0.25, 0, 90);
+    for (const s of this.slicks) s.age += dt; // (remote copies keep ageing between snapshots)
+    this.slicks = this.slicks.filter((s) => s.age < OIL_LIFE);
+    this.vis.forEach((V, i) => {
+      const S = this.slicks[i];
+      const k = S ? Math.min(1, S.age / 0.35) * Math.min(1, (OIL_LIFE - S.age) / 1.5) : 0;
+      for (let j = 0; j < 6; j++) {
+        V.segs[j].enabled = V.glint[j].enabled = k > 0.02;
+        if (k <= 0.02) continue;
+        const half = OIL_HALF * k, x0 = S.x - half + (j / 6) * half * 2, x1 = S.x - half + ((j + 1) / 6) * half * 2;
+        const T = car.terrain, y0 = T.height(x0), y1 = T.height(x1);
+        segBetween(V.segs[j], x0, y0 + 0.02, x1, y1 + 0.02, 0.13, 0.62);
+        const wob = Math.sin(performance.now() * 0.002 + j) * 0.03;
+        segBetween(V.glint[j], x0, y0 + 0.085 + wob, x1, y1 + 0.085 + wob, 0.035, 0.66);
+      }
+    });
+  }
+  state() { return this.slicks.length ? this.slicks.flatMap((s) => [Math.round(s.x * 100) / 100, Math.round(s.y * 100) / 100, Math.round(s.age * 10) / 10]) : 0; }
+  setState(st) {
+    const out = [];
+    if (Array.isArray(st)) for (let i = 0; i + 2 < st.length; i += 3) out.push({ x: st[i], y: st[i + 1], age: st[i + 2] });
+    this.slicks = out;
+  }
+  destroy() { super.destroy(); this.slicks = []; }
+}
+
+// ---------------------------------------------------------------- bumper: the smoke bomb
+export const SMOKE_LIFE = 7;
+const smokeR = (age) => Math.min(3.8, 1.8 + age * 3);
+class Smoke extends Gadget {
+  constructor(car, ctx) { super(car, ctx); this.pot = this.attach(this.A.smokePot, 'smokePot'); this.clouds = []; }
+  fire() {
+    const car = this.car;
+    if (this.cd > 0 || car.wrecked || car.ghost) return;
+    this.cd = 12;
+    this.at(-car.tailX - 1.2, 0.8, _a);
+    this.clouds.push({ x: _a[0], y: Math.max(_a[1], car.terrain.height(_a[0]) + 1.6), age: 0, acc: 0 });
+    if (this.clouds.length > 2) this.clouds.shift();
+    this.ctx.sfx.play('smoke', { x: _a[0], z: 0 });
+  }
+  sync(dt) {
+    const car = this.car, on = !car.wrecked && !car.ghost;
+    this.pot.enabled = on;
+    if (on) this.place(this.pot, -car.tailX + 0.25, 0.3, 0, 0);
+    for (const C of this.clouds) {
+      C.age += dt;
+      if (C.age > SMOKE_LIFE - 1.6) continue; // stop feeding it, let it thin out
+      // a steady supply of big fog puffs; the cloud swells for a moment, then hangs there
+      C.acc = (C.acc || 0) + dt * (C.age < 0.6 ? 50 : 20);
+      const R = smokeR(C.age);
+      while (C.acc >= 1) {
+        C.acc -= 1;
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * R;
+        this.ctx.fx.add({ kind: 'fog', x: C.x + Math.cos(a) * d, y: C.y + Math.sin(a) * d * 0.55, z: 1.2 + Math.random() * 0.4, vx: Math.cos(a) * 0.5, vy: 0.15 + Math.random() * 0.3, t: 0, life: 2 + Math.random() * 0.7, size: 1.0 + Math.random() * 0.9 });
+      }
+    }
+    this.clouds = this.clouds.filter((C) => C.age < SMOKE_LIFE);
+  }
+  /** is this point hidden in one of the clouds? */
+  hides(x, y) { for (const C of this.clouds) if (C.age < SMOKE_LIFE - 0.8 && Math.abs(x - C.x) < smokeR(C.age) * 0.9 && Math.abs(y - C.y) < 2.6) return true; return false; }
+  state() { return this.clouds.length ? this.clouds.flatMap((C) => [Math.round(C.x * 100) / 100, Math.round(C.y * 100) / 100, Math.round(C.age * 10) / 10]) : 0; }
+  setState(st) {
+    const out = [];
+    if (Array.isArray(st)) for (let i = 0; i + 2 < st.length; i += 3) { const old = this.clouds.find((C) => Math.abs(C.x - st[i]) < 0.5); out.push({ x: st[i], y: st[i + 1], age: st[i + 2], acc: old ? old.acc : 0 }); }
+    this.clouds = out;
+  }
+}
+
 const ROOF_G = { arm: Arm, ball: WreckBall, magnet: Magnet, mortar: Mortar, balloon: Balloon, hands: Hands };
-const BUMPER_G = { glove: Glove, harpoon: Harpoon, catcher: Catcher, flame: Flame, eject: Eject };
+const BUMPER_G = { glove: Glove, harpoon: Harpoon, catcher: Catcher, flame: Flame, eject: Eject, smoke: Smoke, oil: Oil };
 
 export function makeGadget(slot, id, car, ctx) {
   const C = (slot === 'roof' ? ROOF_G : BUMPER_G)[id];

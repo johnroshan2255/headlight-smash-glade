@@ -1,0 +1,45 @@
+HEADLIGHT: SMASH GLADE: sounds and music
+=========================================
+
+Every file in this folder is CC0 1.0 (public domain): free for personal and commercial use, no credit
+required. https://creativecommons.org/publicdomain/zero/1.0/
+We list the sources anyway, as thanks. Files were trimmed, mixed, loudness-matched and re-encoded.
+
+MUSIC
+  music-menu.mp3    "Sirens in Darkness" by cynicmusic (The Cynic Project / pixelsphere.org)
+                    https://opengameart.org/content/sirens-in-darkness
+  music-glade1.mp3  "I swear I saw it" by yd
+                    https://opengameart.org/content/i-swear-i-saw-it-background-track
+  music-glade2.mp3  "Dark Forest Theme" by cynicmusic
+                    https://opengameart.org/content/dark-forest-theme
+
+SOUND EFFECTS
+  Kenney (www.kenney.nl): Impact Sounds, Sci-fi Sounds, Interface Sounds, RPG Audio, Music Jingles
+    crunch*, bump*, shatter*, crack*, clang*, rock*  impact pack (metal, punch, plate, tin, glass, wood, mining, bell)
+    boom1-3                                          sci-fi pack explosionCrunch + lowFrequency_explosion
+    whoosh*, glitch                                  sci-fi pack thrusterFire, forceField
+    click, select, tick, beep, pickup                interface pack
+    coins                                            RPG pack handleCoins
+    jingle                                           music jingles pack (pizzicato)
+  "Muffled Distant Explosion" by NenadSimic        boomtail
+    https://opengameart.org/content/muffled-distant-explosion
+  "25 CC0 bang / firework SFX" by rubberduck       boom3 (cannon layer)
+    https://opengameart.org/content/25-cc0-bang-firework-sfx
+  "100 CC0 SFX" by rubberduck                      boing*, cork*
+    https://opengameart.org/content/100-cc0-sfx
+  "40 CC0 water / splash / slime SFX" by rubberduck splash*, geyser
+    https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  "Car Sound Effects Pack (Low Quality)" by GGBotNet horn-car
+    https://opengameart.org/content/car-sound-effects-pack-low-quality
+  "Bicycle Horn" by AntumDeluge                    horn-bulb
+    https://opengameart.org/content/bicycle-horn
+  "Rotating Bicycle Bell" by AntumDeluge           horn-bell
+    https://opengameart.org/content/rotating-bicycle-bell
+  "Steam whistle" by bart                          horn-whistle
+    https://opengameart.org/content/steam-whistle
+  Kenney impact pack (impactBell_heavy)            horn-toll
+  "100 CC0 SFX" by rubberduck (gong)               horn-gong
+  "racing car engine sound loops" by domasx2       engine.wav
+    https://opengameart.org/content/racing-car-engine-sound-loops
+  "windy ambient noise"                            wind.mp3
+    https://opengameart.org/content/windy-ambient-noise

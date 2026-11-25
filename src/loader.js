@@ -2,6 +2,7 @@
 // (a separate chunk) and drives the real loading steps with a progress bar.
 // Nothing here imports PlayCanvas, so this file is a few KB and runs before the engine arrives.
 import { setupGarage } from './garage.js';
+import * as sfx from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 // colour or monochrome title card, matching the player's saved choice
@@ -157,63 +158,83 @@ async function boot() {
   els.boot.classList.add('ready');
   els.menu.hidden = false;
   els.play.focus({ preventScroll: true });
+  setTimeout(sfx.prefetch, 400); // sound effects download while the menu is up (music streams later)
   // why we're back here (the host left the room, the connection dropped)
   try { const n = sessionStorage.getItem('hsg.notice'); if (n) { sessionStorage.removeItem('hsg.notice'); els.tip.textContent = n; els.tip.classList.add('notice'); } } catch { /* */ }
 
   // ---------------------------------------------------------------- account chip, garage, lobby name
   const G = setupGarage(game, {
-    onClose: (inGame) => { if (!inGame) { els.boot.classList.remove('away'); $('lobbyRide').textContent = G.rideName().toUpperCase(); (els.lobby.hidden ? els.play : $('btnJoin')).focus({ preventScroll: true }); } },
+    onClose: (inGame) => { if (!inGame) { els.boot.classList.remove('away'); (els.lobby.hidden ? els.play : $('btnJoin')).focus({ preventScroll: true }); } },
   });
   $('acctChip').hidden = false;
-  const openGarage = () => { els.boot.classList.add('away'); G.openGarage(false); };
-  $('btnGarage').addEventListener('click', openGarage);
-  $('lobbyRide').addEventListener('click', openGarage);
-  $('lobbyRide').textContent = G.rideName().toUpperCase();
+  // sound: the first tap or key press unlocks audio and starts the menu music; buttons click
+  const unlock = () => { sfx.initAudio(); sfx.setMusic(document.body.contains(els.boot) ? 'menu' : 'glade'); };
+  for (const ev of ['pointerup', 'keydown']) window.addEventListener(ev, unlock, { capture: true, passive: true });
+  document.addEventListener('click', (e) => {
+    const b = e.target instanceof Element && e.target.closest('button');
+    if (!b || b.disabled) return;
+    sfx.play(b.classList.contains('g-card') ? 'select' : 'click', undefined, { wet: 0 });
+  }, { capture: true });
+  $('btnGarage').addEventListener('click', () => { els.boot.classList.add('away'); G.openGarage(false); });
   const nameEl = $('optName'), roomEl = $('optRoom');
   const q = new URLSearchParams(location.search);
   nameEl.value = game.account.name || ls.get('name', `Driver${Math.floor(100 + Math.random() * 900)}`);
-  window.addEventListener('hsg:account', () => { if (game.account.name) nameEl.value = game.account.name; $('lobbyRide').textContent = G.rideName().toUpperCase(); });
+  window.addEventListener('hsg:account', () => { if (game.account.name) nameEl.value = game.account.name; });
   roomEl.value = (q.get('room') || ls.get('room', '')).toUpperCase();
   if (q.get('name')) nameEl.value = q.get('name');
 
-  // ---------------------------------------------------------------- open glades on this server
+  // ---------------------------------------------------------------- the lobby: JOIN or CREATE
+  // JOIN: tap a public room in the list, or type a private room's code.
+  // CREATE: a room of your own (public = listed, private = code only), its bots and match length.
+  // Either way you wait in the room's lobby until the host presses START.
   const gladesEl = $('glades');
-  let pollTimer = 0;
-  const pickRoom = (code) => { roomEl.value = code; syncRoom(); };
-  // two ways in: JOIN (a code or an open glade) or CREATE a private room of your own
-  let lobbyMode = 'join', newBots = 0;
-  const syncRoom = () => {
-    roomEl.value = roomEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    for (const b of gladesEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.code === roomEl.value);
-    $('btnJoin').textContent = lobbyMode === 'create' ? `CREATE ${$('newCode').textContent} & DRIVE` : roomEl.value ? `JOIN ${roomEl.value}` : 'JOIN THE GLADE';
-  };
-  const freshCode = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; $('newCode').textContent = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join(''); syncRoom(); };
+  let pollTimer = 0, lobbyMode = 'join', newBots = 0, newTime = 8, newPrivate = false, joining = false;
+  const syncRoom = () => { roomEl.value = roomEl.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); $('btnJoin').disabled = !game.online || roomEl.value.length < 3 || joining; };
+  const freshCode = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; return Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join(''); };
   const setLobbyMode = (m) => {
     lobbyMode = m;
     $('lTabJoin').classList.toggle('on', m === 'join'); $('lTabCreate').classList.toggle('on', m === 'create');
     $('lJoin').hidden = m !== 'join'; $('lCreate').hidden = m !== 'create';
-    if (m === 'create' && $('newCode').textContent.includes('-')) freshCode();
     syncRoom();
   };
   $('lTabJoin').onclick = () => setLobbyMode('join');
   $('lTabCreate').onclick = () => setLobbyMode('create');
-  for (const b of $('botChips').querySelectorAll('button')) b.onclick = () => { newBots = Number(b.dataset.b); for (const o of $('botChips').querySelectorAll('button')) o.classList.toggle('on', o === b); };
-  $('btnCopyCode').onclick = async () => { try { await navigator.clipboard.writeText($('newCode').textContent); $('btnCopyCode').textContent = 'COPIED'; setTimeout(() => ($('btnCopyCode').textContent = 'COPY'), 1500); } catch { /* no clipboard */ } };
+  const chipGroup = (id, key, set) => { for (const b of $(id).querySelectorAll('button')) b.onclick = () => { set(Number(b.dataset[key])); for (const o of $(id).querySelectorAll('button')) o.classList.toggle('on', o === b); }; };
+  chipGroup('botChips', 'b', (v) => (newBots = v));
+  chipGroup('timeChips', 't', (v) => (newTime = v));
+  chipGroup('visChips', 'v', (v) => (newPrivate = !!v));
+  const esc = (t) => String(t).replace(/[<>&"]/g, '');
   async function pollRooms() {
     let list = null;
     try { const r = await fetch('/rooms', { cache: 'no-store' }); if (r.ok) list = await r.json(); } catch { /* offline */ }
     if (!Array.isArray(list)) { gladesEl.innerHTML = ''; return; }
-    if (!list.some((r) => r.code === '')) list.unshift({ code: '', players: 0, max: 8 });
-    list.sort((a, b) => (a.code === '' ? -1 : b.code === '' ? 1 : b.players - a.players));
-    gladesEl.innerHTML = `<div class="lbl">OPEN GLADES</div>` + list.slice(0, 5).map((r) => {
-      const full = r.players >= r.max;
-      return `<button data-code="${r.code}" ${full ? 'disabled' : ''}><b>${r.code || 'PUBLIC'}</b><span>${full ? 'full' : r.players ? `${r.players} driver${r.players > 1 ? 's' : ''}` : 'empty'}</span></button>`;
+    list.sort((a, b) => (a.phase === 'lobby') - (b.phase === 'lobby') || b.players - a.players).reverse();
+    gladesEl.innerHTML = !list.length ? '<p class="l-empty">No public rooms right now. CREATE one, or type a code.</p>' : list.slice(0, 6).map((r) => {
+      const full = r.players >= r.max, left = Math.ceil((r.left || 0) / 60000);
+      const status = full ? 'full' : r.phase === 'playing' ? `playing · ${left} min left` : r.phase === 'results' ? 'results' : 'waiting';
+      return `<button data-code="${esc(r.code)}" ${full ? 'disabled' : ''}><b>${esc(r.host || r.code)}</b><span>${r.players}/${r.max} · ${status}</span></button>`;
     }).join('');
-    for (const b of gladesEl.querySelectorAll('button')) b.onclick = () => pickRoom(b.dataset.code);
-    syncRoom();
+    for (const b of gladesEl.querySelectorAll('button')) b.onclick = () => joinRoom('join', b.dataset.code);
   }
   roomEl.addEventListener('input', syncRoom);
-  $('btnNewCode').onclick = freshCode;
+
+  // into a room's lobby
+  const enterGame = () => begin(null, 'online');
+  async function joinRoom(how, code) {
+    if (joining || !game.online) return;
+    joining = true; syncRoom();
+    const name = nameEl.value.trim().replace(/[<>&]/g, '') || game.account.name || 'Driver';
+    ls.set('name', name);
+    $('lobbyMsg').hidden = true;
+    const r = await game.joinRoom({ how, code, name, private: newPrivate, bots: newBots, time: newTime }, enterGame, () => { els.boot.classList.add('away'); G.openGarage(false); });
+    joining = false; syncRoom();
+    if (r.error) { $('lobbyMsg').textContent = r.error; $('lobbyMsg').hidden = false; return; }
+    if (how === 'join') ls.set('room', code);
+    clearInterval(pollTimer);
+    els.lobby.hidden = true; // the room's lobby takes over
+  }
+  $('btnJoin').addEventListener('click', () => joinRoom('join', roomEl.value));
+  $('btnCreate').addEventListener('click', () => joinRoom('create', freshCode()));
 
   const showLobby = (open) => {
     els.menu.hidden = open;
@@ -221,18 +242,13 @@ async function boot() {
     els.boot.classList.toggle('lobbying', open);
     clearInterval(pollTimer);
     if (open) {
-      if (!game.online) {
-        $('lobbyNet').textContent = 'NO SERVER';
-        $('lobbyNet').classList.add('off');
-        $('roomHint').textContent = 'Co-op needs the game server: run "npm run play" on a computer and open its address on every device.';
-        $('btnJoin').disabled = true;
-      } else {
-        $('lobbyNet').textContent = 'ONLINE';
-        pollRooms();
-        pollTimer = setInterval(pollRooms, 3000);
-      }
+      const off = !game.online;
+      $('lobbyMsg').hidden = !off;
+      $('lobbyMsg').textContent = off ? 'No game server. Run "npm run play" and open its address on every device.' : '';
+      for (const id of ['btnCreate', 'optRoom']) $(id).disabled = off;
+      if (!off) { pollRooms(); pollTimer = setInterval(pollRooms, 3000); }
       syncRoom();
-      ($('btnJoin').disabled ? $('btnBack') : $('btnJoin')).focus({ preventScroll: true });
+      (off ? $('btnBack') : lobbyMode === 'create' ? $('btnCreate') : $('btnJoin')).focus({ preventScroll: true });
     } else els.play.focus({ preventScroll: true });
   };
   $('btnCoop').addEventListener('click', () => showLobby(true));
@@ -247,25 +263,21 @@ async function boot() {
     clearInterval(pollTimer);
     const name = nameEl.value.trim().replace(/[<>&]/g, '') || game.account.name || 'Driver';
     ls.set('name', name);
-    const create = mode === 'online' && lobbyMode === 'create';
-    const code = create ? $('newCode').textContent : roomEl.value;
-    ls.set('room', code);
     $('acctChip').hidden = true;
-    // a new room is made with the creator's settings; joining an existing one keeps its own
-    game.begin(e, { name, mode, code, private: create && $('optHide').checked, bots: create ? newBots : -1 }); // the gesture lets us go fullscreen
+    // solo, or (online) the room we're already in; ?autostart joins/makes q.room and drives straight in
+    game.begin(e, { name, mode, code: roomEl.value, bots: -1 }); // the gesture lets us go fullscreen
     els.boot.classList.add('fade');
     setTimeout(() => els.boot.remove(), 650);
     window.removeEventListener('keydown', keys);
   };
   const keys = (e) => {
-    if (!$('garageUI').hidden || !$('acctUI').hidden) return;
+    if (!$('garageUI').hidden || !$('acctUI').hidden || !$('roomLobby').hidden) return;
     const inLobby = !els.lobby.hidden;
     if (e.code === 'Escape' && inLobby) { showLobby(false); return; }
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) { if (e.code === 'Enter' && inLobby && !$('btnJoin').disabled) begin(e, 'online'); return; }
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) { if (e.code === 'Enter' && inLobby && game.online) { if (lobbyMode === 'create') joinRoom('create', freshCode()); else if (roomEl.value) joinRoom('join', roomEl.value); } return; }
   };
   // click (not pointerdown): on touch screens only the release counts as a user activation
   els.play.addEventListener('click', (e) => begin(e, 'solo'));
-  $('btnJoin').addEventListener('click', (e) => begin(e, 'online'));
   window.addEventListener('keydown', keys);
   if (q.has('autostart')) begin(null, q.get('mode') || 'online');
 }

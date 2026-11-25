@@ -21,6 +21,9 @@ export const WHEELS = {
   spider: { name: 'Spider Rig', price: 1500, blurb: 'Eight mechanical legs. Crawls up cliffs, steps over logs.' },
   saw: { name: 'Sawblade Wheels', price: 1800, blurb: 'Spinning buzzsaws. Slice trees and rival bumpers on contact.' },
   hover: { name: 'Hover Thrusters', price: 2500, blurb: 'Floats a metre up on amber jets. Glides over ponds; brakes badly.' },
+  balloon: { name: 'Balloon Tires', price: 900, blurb: 'Huge, soft and bouncy. They float on ponds, and pop on a big hit: limp home on the rims.' },
+  magnet: { name: 'Magnet Wheels', price: 1600, blurb: 'Cling to cars, barrels and rocks. Drive right over rivals and ride on their roofs.' },
+  square: { name: 'Square Wheels', price: 500, blurb: 'Wooden blocks. Thump-thump on the flat, but the corners bite into rocks and ruins.' },
 };
 
 /** roof slot: an active gadget fired with E (or the ROOF button) */
@@ -42,6 +45,8 @@ export const BUMPER = {
   glove: { name: 'Boxing Glove', price: 900, blurb: 'A spring-loaded fist. Punch rivals into barrels and off hills.' },
   flame: { name: 'Ember Jets', price: 1200, blurb: 'Short amber fire from both sides. Lights barrels, scorches rivals.' },
   harpoon: { name: 'Grapple Harpoon', price: 1400, blurb: 'Hook trees, ground or cars. Hold to reel in, tap to let go.' },
+  smoke: { name: 'Smoke Bomb', price: 800, blurb: 'A thick bank of fog behind you. Anyone inside it vanishes, and bots lose your trail.' },
+  oil: { name: 'Oil Slick', price: 1000, blurb: 'Dumps a black puddle behind you. Whoever drives through it spins out.' },
 };
 
 export const UPGRADES = {
@@ -72,6 +77,9 @@ export const EARN = {
   crate: 4,
   hat: 60,
   boom: 2, // a barrel you set off
+  win: 100, // won a timed match (most smashes)
+  podium: 40, // second or third
+  match: 15, // played a match to the end
 };
 /** the server never credits more than this per minute of play (plus a small burst allowance) */
 export const EARN_PER_MINUTE = 600;

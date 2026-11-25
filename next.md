@@ -1,6 +1,6 @@
 # next.md: where Smash Glade is and what's next
 
-_Last session: 2026-11-24 (second half). Built the endless world, accounts, the garage and car mods. Not committed yet._
+_Last session: 2026-11-25. Damage audit, simpler lobby and garage, CC0 audio, new parts, timed matches. Not committed yet._
 
 ## Where we are
 - **The glade is endless in both directions** (`src/gen.js`):
@@ -19,7 +19,12 @@ _Last session: 2026-11-24 (second half). Built the endless world, accounts, the 
 - **The garage:** `src/garage.js` plus the `#garageUI` / `#acctUI` panels in index.html.
   - The live preview is a real car in the scene (`game.preview(setup)`).
   - It opens from the menu (GARAGE) or from ≡ in-game (applies straight away).
-  - The lobby is now just name + room; it shows your ride.
+  - Tap to equip, with no EQUIP button; BUY shows only for locked items. Tabs: RIDE, WHEELS, ROOF, BUMPER, PAINT (colour dots), HAT. The Monster-Scale Tires card is gone from WHEELS; the tire slider covers it (and a BIGGER button when prices are on).
+- **The lobby** is one narrow column:
+  - JOIN | CREATE.
+  - JOIN: a code with a JOIN button, plus open glades you tap to drive straight in.
+  - CREATE: the code with COPY, bots 0/2/4/FILL, then CREATE & DRIVE. Created rooms are always private.
+  - Name at the bottom.
 - **Mods** (`src/mods.js`):
   - **Undercarriages:** tires with a size slider, treads, pogo, spider, sawblades, hover.
   - **Roof gadgets (E):** arm, **Grabby Hands**, wrecking ball, magnet, mortar, balloon.
@@ -50,7 +55,7 @@ _Last session: 2026-11-24 (second half). Built the endless world, accounts, the 
   - **Ember jets:** calmer flames.
 - **Test hooks:** `__hsg.lockCam()` for close-ups and `__hsg.botSetup()` to give a test bot a fixed loadout.
 - **Private rooms:**
-  - The lobby has JOIN and CREATE ROOM tabs.
+  - The lobby has JOIN and CREATE tabs.
   - A room is created with `{ private, bots }`. `bots`: -1 fills the seats (the public glade), 0..6 means exactly that many.
   - Settings are kept on the server (`GladeRoom.settings`) and sent in welcome/roster.
   - Private rooms are left out of `/rooms`.
@@ -61,10 +66,45 @@ _Last session: 2026-11-24 (second half). Built the endless world, accounts, the 
   - Clients reload to the menu with a notice; `sessionStorage` `hsg.notice` carries it across the reload.
   - A guest leaving only removes their car.
   - There's no host migration any more. This applies to the public glade too.
+- **Damage across the network (2026-11-25):**
+  - Car-on-car contact is decided by the attacker: the faster car (by pre-impact speed) reports the ram, and the saw, stomp and plow cars report their own hits. Each report goes to the victim's owner as a `shove`, with a 400 ms cooldown per target. Crushes are capped at 60.
+  - Kills are credited on the killer's own browser (`onWrecked`), so the score sticks and smash coins are earned.
+  - The wrecking ball resets when it ends up far from its hitch. Removed loose props (mines, rockets) are sent to guests in a `gone` list.
+  - `scripts/playtest/damage.mjs` checks all of it.
 - **Sync fix:** remote cars use the sender's clock (`t` in the car snapshot) with a per-sender offset, proper bracketing and capped extrapolation (`Car.pushRemote/applyRemote`). Max jump went from 3–65 m to under 0.9 m.
 - **Water fix:** pond meshes need their custom AABB set after the render component is created (`World2D.addEntity`), or they get culled.
 - **Respawns:** people respawn near where they crashed; bots drop in near a human.
 - **Removed:** the ASCII view (commented out earlier) and the old fixed map (`LAYOUT`).
+
+- **Audio (2026-11-25):**
+  - The synth sounds were replaced by CC0 recordings in `public/audio` (Kenney packs + OpenGameArt; credits in `CREDITS.txt`), plus music: menu "Sirens in Darkness" and glade "I swear I saw it" / "Dark Forest Theme".
+  - `src/audio.js` has the bank of variants; music runs through an `<audio>` element with a crossfade (`setMusic('menu'|'glade')`, applied 350 ms later).
+  - MUSIC and SOUND sliders are in settings. Sound effects prefetch while the menu is up.
+  - The old synth is only a fallback if a file fails.
+- **Loading:** the server now does brotli/gzip and byte ranges. First visit: 388 KB to the menu (slow 4G: 3.3 s). The itch zip is 6.3 MB / 56 files.
+
+- **New parts (2026-11-25):**
+  - **Wheels** (`rigPhysics` in mods.js, meshes in car2d.js):
+    - **Balloon tires:** the water counts as ground; they pop at ≥ 14 damage (`car.pop()`, bit 32 in the snapshot flags).
+    - **Magnet wheels:** cars count as ground, and pushing into a car climbs it.
+    - **Square wheels:** `w.bump` is taken from the wheel angle.
+  - **Bumper gadgets** `Smoke` and `Oil` in mods.js: clouds and slicks travel in the gadget state. `Car.ctx.slickAt` and `Car.ctx.smokeAt`; `car.inSmoke` hides a car on other screens; bots skip cars in smoke.
+- **Timed matches:**
+  - `GladeRoom.settings.time` (6/8/10/12 minutes); the server's match clock is sent in welcome/roster/`match`, and the client uses `net.serverNow()`.
+  - Client: `onMatch` / `showResults` / `updateClock` in game.js; `#clock` and `#matchEnd` in index.html.
+  - Coins: `EARN.win` 100, `podium` 40, `match` 15.
+  - `MATCH_MS` / `MATCH_BREAK_MS` env for short test matches.
+  - Changing your ride mid-match keeps your score.
+
+- **Room lobby (2026-11-25):**
+  - Server: `GladeRoom` has phases (`match.phase`: lobby → playing → results → lobby) and a host-only `start` message.
+  - `pickColor` sets a player's colour; the same colour is a team.
+  - Bots: 0 unless the host adds them; -1 (fill) is only for `?autostart` tests, which also skip the lobby.
+  - `/rooms` lists public rooms with host, phase and time left.
+  - Client: `net.connect({ how: 'create' | 'join' | 'auto' })`; `game.joinRoom()` from the menu; `src/roomlobby.js` is the lobby UI (`#roomLobby`).
+  - Teams: `sameTeam()` in game.js stops shoves, damage (`Car.damage`) and team-kill credit. Results add up each colour.
+  - Online, cars wear the room colour (`paint: -1`) and name tags use it.
+  - `net.on` now supports several listeners per message.
 
 ## Test results (headless Chrome)
 All of these pass:
@@ -73,12 +113,22 @@ All of these pass:
 - **mods:** every rig and gadget.
 - **hands:** grab, throw, a barrel, and the two-player tear seen on both screens.
 - **toys:** teeter, tornado, arch. The arch check can flake when barrels pulled by the arch blow up the test car.
-- **garage:** desktop and phone.
-- **menu.**
+- **garage:** desktop, phone and landscape.
+- **menu:** the lobby fits every screen.
+- **damage:** every damage source between two players, plus the kill credit.
+- **rooms**, **leave**.
+- **audio:** also passes on the static itch build served from a subfolder.
+- **loadtime.**
+- **newmods:** 10 checks. **match:** 14 checks, passing on three runs in a row.
+- **rooms (lobby):** 19 checks with 5 players. **menu:** 25 checks.
 - **mp:** with `NOBOTS=1`.
 - **mpmods:** loadout sync, glove and ball hits across the network.
 
 ## Still to do
+- **Listen on real devices:** check the engine loop's pitch range, the crash variety and the music levels against the effects. On iPhone, music may only start on the second tap (iOS wants a gesture for each media element).
+- **The CrazyGames SDK,** plus hosting the server online for co-op there.
+- **Feel check on devices:** balloon bounce, square-wheel thump, smoke size, oil spin strength, magnet climb strength.
+- **Golden Hat mode** (from the idea list) wasn't built; timed matches took its place.
 - **Commit and push** this work.
 - **Hands-on feel pass on real devices:**
   - spider adhesion, pogo rhythm, hover braking

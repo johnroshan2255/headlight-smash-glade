@@ -38,7 +38,7 @@ export class BotBrain {
     const o = [];
     const w = (tx, base) => base / (6 + Math.abs(tx - x));
     if (!c.gadget) for (const C of S.crates.values()) if (C.alive && near(C.x)) o.push({ x: C.x, w: w(C.x, 30), kind: 'crate' });
-    for (const k of this.game.cars()) if (k !== c && !k.wrecked && near(k.body.p[0])) o.push({ car: k, w: w(k.body.p[0], 16 + this.mood * 22) * (k === H ? 1.6 : 1), kind: 'ram' });
+    for (const k of this.game.cars()) if (k !== c && !k.wrecked && !k.inSmoke && near(k.body.p[0])) o.push({ car: k, w: w(k.body.p[0], 16 + this.mood * 22) * (k === H ? 1.6 : 1), kind: 'ram' });
     // barrels and cage-balls are things to charge through, not to visit
     for (const B of S.barrels) if (B.alive && near(B.body.p[0]) && Math.random() < 0.25) o.push({ x: B.body.p[0], through: 7, w: w(B.body.p[0], 5), kind: 'barrel' });
     for (const P of S.balls) if (P.alive && near(P.body.p[0])) o.push({ x: P.body.p[0], through: 6, w: w(P.body.p[0], 9), kind: 'ball' });
@@ -63,7 +63,7 @@ export class BotBrain {
       if (H && Math.abs(H.body.p[0] - x) > 160 && this.game.respawnNear) { this.game.respawnNear(c, H.body.p[0]); this.target = null; return; }
     }
     this.retarget -= dt;
-    if (!this.target || this.retarget <= 0 || (this.target.car && this.target.car.wrecked)) { this.target = this.pickTarget(); this.retarget = 4 + Math.random() * 5; }
+    if (!this.target || this.retarget <= 0 || (this.target.car && (this.target.car.wrecked || this.target.car.inSmoke))) { this.target = this.pickTarget(); this.retarget = 4 + Math.random() * 5; }
     const T = this.target;
     // where to drive
     let tx, charge = false;
@@ -111,6 +111,8 @@ export class BotBrain {
       if (roof === 'balloon' && !c.grounded && b.v[1] < -4 && Math.random() < 0.5) this.game.fireRoof(c);
       if (rival && ['glove', 'flame'].includes(bumper) && Math.sign(rival.body.p[0] - x) === c.facing) this.game.fireBumper(c);
       if (bumper === 'harpoon' && Math.random() < 0.12) this.game.fireBumper(c);
+      // smoke and oil go out the back: drop them on whoever is chasing
+      if (rival && ['smoke', 'oil'].includes(bumper) && Math.sign(rival.body.p[0] - x) !== c.facing && Math.random() < 0.4) this.game.fireBumper(c);
       if (bumper === 'eject' && c.hp < 30 && Math.random() < 0.3) this.game.fireBumper(c);
     }
     this.gadgetT -= dt;

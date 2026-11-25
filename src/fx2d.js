@@ -49,14 +49,14 @@ export class FX2D {
     this.glow = new Batch(app, layer, glowMaterial(1.0), 260, SEG + 1, fanTris);
     this.ringB = new Batch(app, layer, glowMaterial(1.0), 6, 32, ringTris);
     this.silB = new Batch(app, layer, silMaterial({ cls: CLS.CHAR }), 220, 3, [[0, 1, 2]]);
-    this.tint = new Batch(app, layer, tintMaterial(), 260, SEG + 1, fanTris);
+    this.tint = new Batch(app, layer, tintMaterial(), 420, SEG + 1, fanTris);
     this.parts = [];
     this.rings = [];
     this.flashes = []; // {x, y, r, k, t, life}: lights for the shaders
     this.shake = 0;
   }
 
-  add(p) { if (this.parts.length < 700) this.parts.push(p); }
+  add(p) { if (this.parts.length < 900) this.parts.push(p); }
 
   explosion(x, y, size = 1, camX = x) {
     this.flashes.push({ x, y, r: 9 * size, k: 2.2, t: 0, life: 0.55 });
@@ -86,7 +86,7 @@ export class FX2D {
       keep.push(p);
       if (p.t < 0) continue;
       p.vy += (p.g || 0) * dt;
-      if (p.kind === 'smoke' || p.kind === 'steam' || p.kind === 'dust') { p.vx *= 1 - dt * 0.8; p.vy *= 1 - dt * 0.9; }
+      if (p.kind === 'smoke' || p.kind === 'steam' || p.kind === 'dust' || p.kind === 'fog') { p.vx *= 1 - dt * 0.8; p.vy *= 1 - dt * 0.9; }
       p.x += p.vx * dt; p.y += p.vy * dt;
       const k = p.t / p.life;
       if (p.kind === 'fire' || p.kind === 'spark') {
@@ -105,8 +105,9 @@ export class FX2D {
       } else {
         if (T.n >= T.cap) continue;
         const r = p.size * (1 + k * (p.kind === 'smoke' ? 1.8 : 1.0));
-        const a = (p.kind === 'smoke' ? 0.55 : p.kind === 'steam' ? 0.5 : 0.35) * (1 - k) * Math.min(1, p.t * 6);
-        const c = p.kind === 'smoke' ? [22, 22, 22] : p.kind === 'steam' ? [190, 200, 200] : [40, 40, 38];
+        // fog (the smoke bomb) is the colour of the mist itself, thick enough to swallow a buggy
+        const a = p.kind === 'fog' ? 0.9 * Math.min(1, (1 - k) * 2.5) * Math.min(1, p.t * 3) : (p.kind === 'smoke' ? 0.55 : p.kind === 'steam' ? 0.5 : 0.35) * (1 - k) * Math.min(1, p.t * 6);
+        const c = p.kind === 'smoke' ? [22, 22, 22] : p.kind === 'steam' ? [190, 200, 200] : p.kind === 'fog' ? [92, 104, 100] : [40, 40, 38];
         this.fan(T, p.x, p.y, p.z, r, c, a, true);
       }
     }

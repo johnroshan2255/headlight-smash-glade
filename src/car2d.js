@@ -27,6 +27,42 @@ function wheelMesh(device, R) {
   return mb.build(device);
 }
 
+/** balloon tire: a fat, puffy, pale rubber donut with two dark bands */
+function balloonWheelMesh(device, R) {
+  const mb = new MeshBuilder();
+  const pale = () => rgba(0.47, 0.42, 0.34, CLS.CHAR), band = () => rgba(0.16, 0.13, 0.11, CLS.CHAR);
+  addTube(mb, [[-0.42, 0, 0, R * 0.55], [-0.38, 0, 0, R * 0.86], [-0.24, 0, 0, R], [0.24, 0, 0, R], [0.38, 0, 0, R * 0.86], [0.42, 0, 0, R * 0.55]], { seg: 16, subdiv: 2, capEnd: true, capStart: true, colFn: pale });
+  for (const x of [-0.16, 0.16]) addTube(mb, [[x - 0.03, 0, 0, R * 1.01], [x + 0.03, 0, 0, R * 1.01]], { seg: 16, subdiv: 1, colFn: band });
+  addLathe(mb, [[0.0, 0.42], [R * 0.3, 0.43], [R * 0.34, 0.45], [0.0, 0.46]], { seg: 10, warp: (x, y, z) => [y, x, z], colFn: () => rgba(0.32, 0.33, 0.35, CLS.STONE) });
+  return mb.build(device);
+}
+/** what's left of a popped balloon tire: a steel rim with rubber flaps */
+function rimMesh(device, R) {
+  const mb = new MeshBuilder(), steel = () => rgba(0.32, 0.33, 0.35, CLS.STONE), rub = () => rgba(0.42, 0.38, 0.31, CLS.CHAR);
+  const r = R * 0.62;
+  addTube(mb, [[-0.2, 0, 0, r - 0.06], [-0.2, 0, 0, r], [0.2, 0, 0, r], [0.2, 0, 0, r - 0.06]], { seg: 14, subdiv: 1, capEnd: true, capStart: true, colFn: steel });
+  for (let i = 0; i < 3; i++) addBox(mb, { x: 0.22, sx: 0.04, sy: r * 1.8, sz: 0.06, tilt: (i / 3) * Math.PI, col: steel() });
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3; addBox(mb, { y: Math.cos(a) * (r + 0.1), z: Math.sin(a) * (r + 0.1), sx: 0.5, sy: 0.22, sz: 0.05, tilt: -a + 0.5, col: rub() }); }
+  return mb.build(device);
+}
+/** magnet wheel: dark tread, a red horseshoe-magnet face with steel tips and an amber core */
+function magnetWheelMesh(device, R) {
+  const mb = new MeshBuilder(), rub = () => rgba(0.1, 0.095, 0.09, CLS.CHAR), red = () => rgba(0.5, 0.13, 0.1, CLS.CHAR), steel = () => rgba(0.36, 0.37, 0.39, CLS.STONE);
+  addTube(mb, [[-0.2, 0, 0, R - 0.05], [-0.24, 0, 0, R], [0.24, 0, 0, R], [0.2, 0, 0, R - 0.05]], { seg: 14, subdiv: 1, capEnd: true, capStart: true, colFn: rub });
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; addBox(mb, { x: 0.25, y: Math.cos(a) * R * 0.62, z: Math.sin(a) * R * 0.62, sx: 0.05, sy: R * 0.42, sz: R * 0.3, tilt: -a, col: i % 2 ? red() : steel() }); }
+  addLathe(mb, [[0.0, 0.25], [R * 0.3, 0.26], [R * 0.3, 0.29], [0.0, 0.3]], { seg: 10, warp: (x, y, z) => [y, x, z], colFn: () => rgba(1.0, 0.62, 0.25, CLS.GLOW) });
+  return mb.build(device);
+}
+/** square wheel: a wooden block with iron corner plates and a bolted hub */
+function squareWheelMesh(device, R) {
+  const mb = new MeshBuilder(), wood = () => rgba(0.36, 0.23, 0.12, CLS.CHAR), dark = () => rgba(0.2, 0.12, 0.06, CLS.CHAR), iron = () => rgba(0.25, 0.23, 0.21, CLS.STONE);
+  addBox(mb, { sx: 0.46, sy: R * 2, sz: R * 2, col: wood() });
+  for (const y of [-0.5, 0, 0.5]) addBox(mb, { x: 0.235, y: y * R, sx: 0.02, sy: 0.05, sz: R * 1.9, col: dark() }); // planks
+  for (const y of [-1, 1]) for (const z of [-1, 1]) addBox(mb, { y: y * R * 0.86, z: z * R * 0.86, sx: 0.5, sy: R * 0.32, sz: R * 0.32, col: iron() });
+  addBox(mb, { x: 0.25, sx: 0.06, sy: R * 0.5, sz: R * 0.5, col: iron() });
+  return mb.build(device);
+}
+
 function gadgetMeshes(device) {
   const metal = () => rgba(0.17, 0.17, 0.18, CLS.STONE), rust = () => rgba(0.44, 0.23, 0.12, CLS.STONE), brass = () => rgba(0.52, 0.4, 0.18, CLS.STONE), steel = () => rgba(0.32, 0.33, 0.35, CLS.STONE);
   const plow = new MeshBuilder();
@@ -168,7 +204,8 @@ export class Car {
     this.hatEnt.setLocalPosition(S.seat[0], S.seat[1], S.seat[2]);
     this.hat = hat;
     // the rays under the car; tires and sawblades get a spinning wheel on the near side
-    const round = R.kind === 'tires' || R.kind === 'saw';
+    const round = ['tires', 'saw', 'balloon', 'magnet', 'square'].includes(R.kind);
+    this.popped = false;
     this.wheels = R.rays.map((w) => {
       const W = { lx: w.lx, lx0: w.lx, r: w.r, pivot: null, spin: null, comp: 0, prevComp: 0, dist: this.reach, contact: false, angle: 0 };
       if (round) {
@@ -177,6 +214,15 @@ export class Car {
         if (R.saw) {
           W.spin = ent(sawMesh(app.graphicsDevice), A.mat, W.pivot, 'saw');
           W.spin.setLocalScale(w.r, w.r, w.r);
+        } else if (R.balloon) { // the wheel meshes are built at their real size (metres)
+          W.spin = ent(cached(A, `balloon:${w.r}`, () => balloonWheelMesh(app.graphicsDevice, w.r)), A.mat, W.pivot, 'wheel');
+          W.rim = ent(cached(A, `rim:${w.r}`, () => rimMesh(app.graphicsDevice, w.r)), A.mat, W.pivot, 'rim');
+          for (const e of [W.spin, W.rim]) { e.setLocalScale(1.6, 1, 1); e.setLocalEulerAngles(0, 90, 0); }
+          W.rim.enabled = false;
+        } else if (R.magnet || R.square) {
+          W.spin = ent(cached(A, `${R.kind}:${w.r}`, () => (R.magnet ? magnetWheelMesh : squareWheelMesh)(app.graphicsDevice, w.r)), A.mat, W.pivot, 'wheel');
+          W.spin.setLocalScale(1, 1, 1); // built at real size
+          W.spin.setLocalEulerAngles(0, 90, 0);
         } else {
           const r0 = Math.round((w.r / this.setup.tire / SCALE) * 100) / 100;
           if (!A.wheels.has(r0)) A.wheels.set(r0, wheelMesh(app.graphicsDevice, r0));
@@ -244,6 +290,7 @@ export class Car {
     const b = this.body;
     b.set(x, this.terrain.height(x) + 1.4 + drop, 0);
     b.v[0] = b.v[1] = 0; b.w = 0;
+    this.pop(false); this.oilT = 0;
     b.enabled = true;
     this.hp = 100;
     this.wrecked = 0;
@@ -285,14 +332,18 @@ export class Car {
         if (o === b || !o.enabled || Math.abs(o.p[0] - mx) > o.bound) continue;
         for (let i = 0; i < o.shapes.length; i++) {
           const cx = o.ws[i][0], cy = o.ws[i][1], r = o.shapes[i][2];
-          if (Math.abs(mx - cx) < r * 0.9 && cy + r < my + 0.3) { const top = cy + Math.sqrt(r * r - (mx - cx) ** 2); if (top > g) { g = top; under = o; } }
+          // another car only counts as ground when the wheel is clearly above it (landing on a roof):
+          // a wheel meeting a car's side is a ram, not a ramp
+          // (magnet wheels cling to a car's side too, so they drive up and over it)
+          if (Math.abs(mx - cx) < r * 0.9 && cy + r < my + (o.car && !R.magnet ? -0.25 : R.magnet ? 0.6 : 0.3)) { const top = cy + Math.sqrt(r * r - (mx - cx) ** 2); if (top > g) { g = top; under = o; } }
         }
       }
-      if (R.hover) { const wy = this.terrain.water(mx); if (wy !== null) g = Math.max(g, wy + 0.05); } // jets skim the pond
+      if (R.hover || (R.balloon && !this.popped)) { const wy = this.terrain.water(mx); if (wy !== null) g = Math.max(g, wy + 0.05); } // jets skim the pond; balloon tires float on it
       // the spring ray leaves the axle along body-down and meets the sloped ground under it
       this.terrain.normal(mx, _n);
       const un = _u[0] * _n[0] + _u[1] * _n[1]; // how squarely the wheels face the ground
-      const dist = ((my - g) * _n[1]) / Math.max(un, 0.25);
+      // square wheels stand taller on a corner; popped balloons sit down on their rims
+      const dist = ((my - g) * _n[1]) / Math.max(un, 0.25) - (w.bump || 0);
       w.prevComp = w.comp;
       w.contact = un > 0.2 && dist < REACH;
       w.dist = Math.min(dist, REACH);
@@ -303,8 +354,15 @@ export class Car {
       const rx = mx - b.p[0] - _u[0] * dist, ry = my - b.p[1] - _u[1] * dist; // contact point
       b.addForceAt(_n[0] * fs, _n[1] * fs, rx, ry);
       if (under && !under.kinematic) under.addForceAt(-_n[0] * fs, -_n[1] * fs, mx - under.p[0], g - under.p[1]); // and push back on it
+      // landing hard on another car's roof with stompers (pogo coils, giant tires, the steam-roller): a stomp
+      if (under && under.car && b.v[1] < -4 && (R.pogo || this.setup.tire >= 1.6 || S.crusher) && Car.ctx && Car.ctx.stomp) Car.ctx.stomp(this, under.car, -b.v[1]);
       // spider feet cling to the ground, so it can walk up slopes nothing else can
       if (R.adhesion) b.addForceAt(-_n[0] * M * 11 / this.wheels.length, -_n[1] * M * 11 / this.wheels.length, rx, ry);
+      // magnet wheels hold on to whatever body they stand on (and pull it up against them)
+      if (R.magnet && under) { const k = M * 16 / this.wheels.length; b.addForceAt(-_n[0] * k, -_n[1] * k, rx, ry); if (!under.kinematic) under.addForceAt(_n[0] * k * 0.5, _n[1] * k * 0.5, mx - under.p[0], g - under.p[1]); }
+      // an oil slick: no grip, and the car spins
+      const oiled = Car.ctx && Car.ctx.slickAt && Car.ctx.slickAt(this, mx, g);
+      if (oiled) { this.oilT = 0.8; }
       // drive along the ground
       const tx = _n[1] * f, ty = -_n[0] * f; // ground tangent, pointing the way the nose faces
       b.pointVel(rx, ry, _v);
@@ -318,7 +376,7 @@ export class Car {
         fl = -vlong * per * 0.12;
         if (this.throttle > 0.05) fl += this.throttle * per * S.accel * R.accelMul * Math.max(0, Math.min(1, 1.7 * (1 - vlong / top)));
         else if (this.throttle < -0.05) fl -= Math.sign(vlong) * per * 16;
-        const cap = fs * R.grip;
+        const cap = fs * R.grip * (this.popped ? 0.55 : 1) * (oiled ? 0.04 : 1);
         fl = Math.max(-cap, Math.min(cap, fl));
       }
       // tyre force acts at axle height: wheelies come from torque, not from tripping
@@ -346,6 +404,16 @@ export class Car {
       if (this.throttle > 0.05) b.addForce(f * M * 9 * this.throttle, 0);
       b.t += (-s * 9 - b.w * 1.5) * b.I;
     }
+    // magnet wheels: drive into a car and they haul you up its side and onto its roof
+    if (R.magnet && this.throttle > 0.05 && !this.climbCd) {
+      for (const o of this.physics.bodies) {
+        if (!o.car || o === b || !o.enabled || o.car.wrecked) continue;
+        const dx = (o.p[0] - b.p[0]) * f, dy = o.p[1] - b.p[1];
+        if (dx > 0.5 && dx < 3.4 && dy > -0.8 && dy < 1.6) { b.addForce(f * M * 6, M * (-G + 9)); b.t += (f * 6 - b.w * 2) * b.I; break; }
+      }
+    }
+    // spinning out on oil
+    if (this.oilT > 0) { this.oilT -= h; b.t += (this.facing * 22 * Math.min(1, this.speed / 8)) * b.I; }
     // pogo coils: a gyro keeps the body level between bounces (it would kick itself over otherwise)
     if (R.pogo) { const a = Math.atan2(s, c); b.t += (-a * 14 - b.w * 4) * b.I; }
     for (const g of this.gadgets()) if (g.forces) g.forces(h);
@@ -415,9 +483,23 @@ export class Car {
 
   damage(amount, by) {
     if (this.wrecked || amount <= 0 || this.shield > 0) return;
+    if (by && Car.ctx && Car.ctx.sameTeam && Car.ctx.sameTeam(this, by)) return; // teammates can't hurt each other
     this.hp -= amount;
+    if (this.rigP.balloon && !this.popped && amount >= 14) this.pop(true);
     if (by && by !== this) { this.lastHitBy = by; this.lastHitT = performance.now(); }
     if (this.hp <= 0 && this.onWreck) this.onWreck(this);
+  }
+
+  /** balloon tires: pop to bare rims (and back on a fresh car). Shown on every screen via the snapshot. */
+  pop(on) {
+    if (!!on === this.popped) return;
+    this.popped = !!on;
+    for (const w of this.wheels) if (w.rim) { w.rim.enabled = this.popped; w.spin.enabled = !this.popped; }
+    if (on && Car.ctx) {
+      const b = this.body;
+      Car.ctx.sfx.play('pop', { x: b.p[0], z: 0 }, { vol: 1.2 });
+      for (const w of this.wheels) { toWorldPt(this, w.lx, -(w.dist - w.r), _p); for (let i = 0; i < 6; i++) Car.ctx.fx.add({ kind: 'debris', x: _p[0], y: _p[1], z: 0.6, vx: (Math.random() - 0.5) * 7, vy: 2 + Math.random() * 5, t: 0, life: 1, size: 0.12, g: -19, rot: Math.random() * 6, spin: (Math.random() - 0.5) * 20 }); }
+    }
   }
 
   // ----------------------------------------------------------------- remote cars: snapshot interpolation
@@ -437,11 +519,11 @@ export class Car {
     const R = this.remote, buf = R.buf;
     if (!buf.length) return;
     const rt = now - R.off - 100, b = this.body, last = buf[buf.length - 1];
-    let px, py, a;
+    let px, py, a, vx = last.v[0], vy = last.v[1];
     if (rt >= last.t) { // nothing newer yet: carry on along its velocity, briefly
       const ex = Math.min(rt - last.t, 120) / 1000;
       px = last.p[0] + last.v[0] * ex; py = last.p[1] + last.v[1] * ex; a = last.a;
-    } else if (rt <= buf[0].t) { px = buf[0].p[0]; py = buf[0].p[1]; a = buf[0].a; }
+    } else if (rt <= buf[0].t) { px = buf[0].p[0]; py = buf[0].p[1]; a = buf[0].a; vx = buf[0].v[0]; vy = buf[0].v[1]; }
     else {
       let i = buf.length - 2;
       while (i > 0 && buf[i].t > rt) i--;
@@ -451,10 +533,12 @@ export class Car {
         px = A.p[0] + (C.p[0] - A.p[0]) * k; py = A.p[1] + (C.p[1] - A.p[1]) * k;
         const da = Math.atan2(Math.sin(C.a - A.a), Math.cos(C.a - A.a));
         a = A.a + da * k;
+        vx = A.v[0] + (C.v[0] - A.v[0]) * k; vy = A.v[1] + (C.v[1] - A.v[1]) * k;
       }
     }
     b.p[0] = px; b.p[1] = py; b.a = a;
-    b.v[0] = last.v[0]; b.v[1] = last.v[1];
+    // its velocity *at that moment* (not the newest one): a ram hits as hard on my screen as it was driven
+    b.v[0] = vx; b.v[1] = vy;
     this.speed = Math.hypot(b.v[0], b.v[1]);
     b.updateShapes();
   }
@@ -462,6 +546,11 @@ export class Car {
   // ----------------------------------------------------------------- visuals
   sync(dt, time) {
     const b = this.body, S = this.spec;
+    if (!this.wrecked) { // a remote car whose driver ejected: its empty car is gone; cars in smoke vanish
+      const show = !(this.ghost && !this.local) && !this.inSmoke;
+      this.holder.enabled = show;
+      for (const w of this.wheels) if (w.pivot) w.pivot.enabled = show;
+    }
     this.root.setPosition(b.p[0], b.p[1], 0);
     this.root.setEulerAngles(0, 0, (b.a * 180) / Math.PI);
     // turning around: a quick 180 spin of the body silhouette
@@ -476,10 +565,11 @@ export class Car {
     for (const w of this.wheels) {
       if (!this.local) { // estimate suspension from the ground under the wheel
         const mx = b.p[0] + c * w.lx, my = b.p[1] + s * w.lx;
-        w.dist = Math.min(this.reach, Math.max(this.reach - this.rest, (my - this.terrain.height(mx)) / Math.max(0.3, c)));
+        w.dist = Math.min(this.reach, Math.max(this.reach - this.rest, (my - this.terrain.height(mx)) / Math.max(0.3, c) - (w.bump || 0)));
         if (w.dist < this.reach - 0.02) this.grounded++;
       }
       w.angle += (vlong / Math.max(0.1, w.r)) * dt * (this.saw ? 3 : 1);
+      w.bump = this.rigP.square ? w.r * (1 / Math.max(Math.abs(Math.cos(w.angle)), Math.abs(Math.sin(w.angle))) - 1) : this.popped ? -w.r * 0.38 : 0;
       if (!w.pivot) continue;
       w.pivot.setLocalPosition(w.lx, -(w.dist - w.r), 0.45);
       w.pivot.setLocalEulerAngles(0, 0, (-w.angle * 180 / Math.PI * f) % 360);
@@ -552,8 +642,7 @@ export class Car {
       for (let i = 0; i < 4; i++) ctx.fx.sparkBurst(b.p[0] + (Math.random() - 0.5) * 0.3, b.p[1] - 0.4 + i * 0.35, 8, 7);
       for (let i = 0; i < 14; i++) ctx.fx.add({ kind: 'debris', x: b.p[0], y: b.p[1] + Math.random(), z: 0.6, vx: (Math.random() - 0.5) * 9, vy: 3 + Math.random() * 7, t: 0, life: 1.6, size: 0.1 + Math.random() * 0.2, g: -19, rot: Math.random() * 6, spin: (Math.random() - 0.5) * 20 });
       ctx.fx.flashes.push({ x: b.p[0], y: b.p[1], r: 5, k: 1.6, t: 0, life: 0.35 });
-      ctx.sfx.play('crack', { x: b.p[0], z: 0 }, { vol: 1.4 });
-      ctx.sfx.play('crunch', { x: b.p[0], z: 0 }, { vol: 1.4 });
+      ctx.sfx.play('wreck', { x: b.p[0], z: 0 }, { vol: 1.4 });
     }
     this.torn = true;
     this.wreck();
@@ -624,6 +713,10 @@ function clipMaterial(front) {
 }
 
 let sawCache = null;
+const _p = [0, 0];
+function toWorldPt(car, lx, ly, out) { const b = car.body, c = Math.cos(b.a), s = Math.sin(b.a); out[0] = b.p[0] + c * lx - s * ly; out[1] = b.p[1] + s * lx + c * ly; return out; }
+function cached(A, key, make) { if (!A.wheels.has(key)) A.wheels.set(key, make()); return A.wheels.get(key); }
+
 function sawMesh(device) {
   if (sawCache) return sawCache;
   const mb = new _MB();

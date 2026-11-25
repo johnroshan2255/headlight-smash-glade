@@ -7,7 +7,8 @@ monsters. You smash things, get smashed, and respawn two seconds later after you
 like a cork.
 
 Built on **PlayCanvas** (WebGL 2 + WebGPU). Multiplayer runs on **Colyseus** (MIT, self-hosted).
-Every sound is synthesised at runtime, so there are no audio files.
+All sounds and music are recorded **CC0 (public domain)** assets from Kenney and OpenGameArt, so there
+are no copyright strings attached. Sources are listed in `public/audio/CREDITS.txt`.
 
 ```bash
 npm install
@@ -17,14 +18,29 @@ npm run server     # just the Colyseus server (serves dist/ too)
 npm run itch       # static build zip for itch.io: release/headlight-smash-glade-web.zip
 ```
 
-The menu has three buttons. **PLAY** drops you into a solo glade with bots. **CO-OP** opens the lobby,
-which has two tabs:
-- **JOIN:** type a friend's code, tap an open public glade, or leave it empty for the public glade (which fills empty seats with bots).
-- **CREATE ROOM:** makes a private room with a code to share (**COPY**, **NEW**). Choose **bots**: none, 2, 4 or fill seats. Choose whether it's **hidden from the open list**.
-  - The settings live on the server, so they survive a host hand-over.
-  - The host can change bots and privacy mid-game from ≡; the room code is shown there to invite people.
-**GARAGE** is where you pick and kit out your ride. Anyone on your Wi-Fi can join `http://<your-ip>:2567`. Empty seats are
-filled by bots, which run on the room's host browser. The garage is also in the ≡ settings mid-game.
+The menu has three buttons. **PLAY** drops you into a solo glade with bots. **CO-OP** is for rooms:
+- **JOIN:** lists the public rooms (host name, players, waiting or playing). Tap one to join it. For a private room, type its code.
+- **CREATE:** choose **PUBLIC** (listed under JOIN) or **PRIVATE** (code only), the **bots** (0, 2, 4 or 6) and the **minutes**, then CREATE ROOM.
+- **The room's lobby:** everyone waits here first, not in the glade.
+  - It shows who's in the room (the host is marked) and the code (tap it to copy). There's a GARAGE button to pick your ride.
+  - **Colours:** each player picks one. Two or more players on the same colour are a **team**: teammates can't hurt each other, and the team's smashes add up.
+  - The host can change public/private, bots and minutes, then presses **START**. Everyone drops into the glade together.
+  - Someone who joins while a match is on gets **DRIVE IN**.
+  - When a match ends, the results show and everyone goes back to the lobby. The host presses **START NEXT MATCH**.
+- **Bots:** there are none unless the host adds them.
+- **In a room**, cars wear the room colour; your garage paint is used in solo.
+- **Hosting:** the host owns the room. If the host leaves, everyone returns to the menu.
+
+**Timed matches (CO-OP):**
+- Every room plays matches of **6, 8, 10 or 12 minutes**. You choose the length in CREATE; the host can change it in the room's lobby or from ≡ (it applies from the next match).
+- The clock sits at the top of the screen. **Most smashes when it hits 0:00 wins.** Bots count as players.
+- The results show for 12 seconds (smashes then don't count), then everyone is back in the room's lobby, and scores start from zero next match.
+- **Teams:** the results add up each colour's smashes, and the best team (or player) wins.
+- **Coins:** the winner earns 100, second or third earns 40, and everyone who played to the end earns 15.
+- The server runs the phases and the clock (lobby → playing → results → lobby; `GladeRoom.startMatch` / `endMatch`), so every screen agrees.
+- Solo PLAY stays endless.
+
+**GARAGE** is where you kit out your ride: tabs RIDE, WHEELS, ROOF, BUMPER, PAINT and HAT. Tap something and the car wears it at once. Rubber tires and sawblades get a SIZE slider. Anyone on your Wi-Fi can join `http://<your-ip>:2567`. Bots run on the room host's browser. The garage is also in the ≡ settings mid-game.
 
 ## The glade (endless)
 The glade goes on forever in both directions. It is generated from a seed in 64 m chunks
@@ -47,7 +63,7 @@ Chunk types:
 ## Accounts, coins and the garage
 - **Accounts:** you play straight away as a guest. Register a name and password any time from the account chip (top right) to keep your garage on every device; the guest's progress moves into the new account.
 - **Coins:** you earn them for smashes, distance, flips, air time, crates, barrels and hats. The server caps how fast coins can be credited.
-- **GARAGE:** on the menu, or from ≡ in-game. It shows a live preview of the car: try anything on, then buy and equip it.
+- **GARAGE:** on the menu, or from ≡ in-game. It shows a live preview of the car. Tap an item you own to equip it; a locked one shows its price and a BUY button.
 - **Free for now:** everything is free while `FREE_FOR_NOW` is on in `src/catalog.js`. Flip it to `false` to turn prices back on.
 - **Storage:** accounts, coins, purchases and setups live in `server/data/accounts.json` (git-ignored). Passwords are scrypt-hashed and tokens are stored hashed. Without a server (the itch build) the profile is kept in the browser.
 
@@ -66,6 +82,9 @@ Chunk types:
 - **Spider Rig:** eight legs that cling to slopes.
 - **Sawblades:** cut trees and bumpers.
 - **Hover Thrusters:** glide over ponds.
+- **Balloon Tires:** huge, soft and bouncy, and they float across ponds. A big hit pops them and you limp on the rims until you respawn; everyone sees the pop.
+- **Magnet Wheels:** cling to cars, barrels and rocks. Drive into a rival and you climb up and ride on their roof.
+- **Square Wheels:** wooden blocks. Thump-thump on the flat (each corner lifts the car), but the edges bite into rough ground.
 
 **Roof gadget (E):**
 - **Robot Arm:** auto-grabs barrels, boulders and logs; E throws.
@@ -81,10 +100,27 @@ Chunk types:
 - **Cow-Catcher:** passive; scoops things up and over.
 - **Ember Jets:** fire from both sides.
 - **Ejector Seat:** parachute out while your empty car rams on and blows up.
+- **Smoke Bomb:** a thick bank of fog behind you. Cars inside it vanish from everyone else's screen, name tag and all, and bots lose your trail.
+- **Oil Slick:** dumps a black puddle behind you. Anyone who drives through it loses grip and spins out (it doesn't catch you for the first moment).
 
 Gadget crates still give a temporary power-up for 25 s:
 - **Bomb-Dropper**, **Shockwave Horn** and **Spring-Hop** fire with F.
 - **Rocket-Boost** and **Mega-Plow** work by themselves.
+
+## Sound and music
+- **Music:** a calm menu track, and two moody glade tracks that alternate in-game. They are streamed rather than decoded into memory, and crossfade when they change.
+- **Effects:** crashes are layered metal, thump and rattle recordings with random pitch so no two sound the same. Also explosions with a rolling tail, splashes, springs, clangs, a horn for each ride and a recorded engine loop that revs with the throttle. A wind bed plays under everything.
+- **Horns:** every ride has its own (`HORNS` in `src/audio.js`). Mudrunner: car horn. Coffin Kart: small high beep. Old Tractor: meep-meep. Cage Bus: two-tone. Monster Hopper: air-horn chord. Bathtub Racer: rubber-duck squeak. Wheelbarrow Kart: clown honk-honk. Bone Trike: bicycle bell. Lantern Hearse: funeral bell. Shrine Dozer: gong. Iron Steam-Roller: steam whistle.
+- **Positional:** every sound pans and fades with distance from the camera, through one shared foggy reverb.
+- **Volume:** MUSIC and SOUND sliders in ≡ settings, saved per browser.
+- **Unlocking:** the first tap or key press starts the audio (browsers require a gesture). The sound effects (about 400 KB) download in the background while the menu is up.
+- **Code:** `src/audio.js`. If a file ever fails to load, a small synthesised stand-in plays instead.
+
+## Loading and size
+- **First visit:** the menu is ready after **388 KB**. Measured times: 0.9 s on Wi-Fi, 1.5 s on 4G, 3.3 s on slow 4G (`scripts/playtest/loadtime.mjs`). PLAY → driving is instant, because the world is built during loading.
+- **Our server:** compresses text with brotli or gzip (cached in memory) and supports byte ranges for audio (Safari needs them).
+- **itch.io zip:** about 6.3 MB and 56 files.
+- **Platform limits:** CrazyGames allows ≤ 20 MB initial download for the mobile homepage, ≤ 250 MB total and ≤ 1500 files. itch.io allows ≤ 1000 files.
 
 ## Controls
 - **Keyboard:**
@@ -127,16 +163,21 @@ Screenshots go to `$HSG_SHOTS` (default: a `hsg-shots` folder in the system temp
 | `gadgetlook.mjs [ride] [ids]` | close-up screenshots of each tool at rest, firing and facing the other way |
 | `hands.mjs` | Grabby Hands: lift and throw a rival, grab a barrel, two players tear a car in two (both see it) |
 | `toys.mjs` | teeter-totter tips, tornado lifts, magnet arch pulls |
-| `garage.mjs` | garage and accounts: previews, equipping, tire slider, register / sign out / sign in, drive in the setup |
+| `garage.mjs` | garage and accounts on desktop, phone and landscape: panel fits, tap-to-equip, no locked cards, tire slider, paint, register / sign out / sign in, drive in the setup |
 | `sync.mjs` | 2 players: per-frame smoothness of remote cars and bots (max jump, teleports, rebuilds), pond water on both |
 | `syncprops.mjs` | the host rams props; the guest's copies move smoothly and end where the host has them |
 | `leave.mjs` | a guest leaving keeps the room; the host leaving closes it and sends everyone to the menu |
-| `rooms.mjs` | private rooms: create with no bots, not listed, join by code, host turns bots on (guests can't), public glade still fills |
-| `menu.mjs` | menu chips, lobby + open glades, JOIN, the in-game garage |
+| `rooms.mjs` | rooms and their lobby with 5 players: CREATE public/private, JOIN list, join by code, a wrong code, colour teams (no friendly fire), the host's START, no bots by default, DRIVE IN mid-match, back to the lobby after the results, START NEXT MATCH, the host adds bots. Needs the short-match server (below) |
+| `menu.mjs` | menu chips; the lobby fits every screen with no extra buttons; tap an open glade to join; CREATE; the in-game garage |
 | `mp.mjs` | 2 players: roster, host, bots, sync, guest barrel hit, host hand-over (`NOBOTS=1` for a calm run) |
+| `newmods.mjs` | balloon tires (drive, pop to the rims, float on a pond), magnet wheels climb onto a car, square wheels thump, oil spins a car out, smoke hides a car and bots lose it |
+| `match.mjs` | timed matches with 2 players: the clock agrees, a smash scores, results show the same winner on both, no scoring in the break, the next match resets. Also the balloon pop, oil and smoke across the network. Needs `PORT=2568 MATCH_MS=30000 MATCH_BREAK_MS=5000 node server/index.js` |
 | `mpmods.mjs` | loadouts sync, boxing glove and wrecking ball hit across the network |
+| `damage.mjs` | every damage source between two players (ram, glove, ball, jets, mortar, mine, saw, stomp, barrel, hands throw) lands on the victim's own screen; kill feed, score and coins |
 | `soak.mjs 60 <ride> drive` | bots for a minute: fps, wrecks, scores, stuck bots, errors |
 | `colors.mjs` | paint: garage close-ups, the PAINT tab, painted scenes on WebGL2 and WebGPU |
+| `audio.mjs` | every sound decodes; menu music on the first tap, glade music on PLAY; the engine revs; game events use recordings (no fallbacks); volume sliders |
+| `loadtime.mjs` | first-visit load on Wi-Fi / 4G / slow 4G: time and bytes to the menu, PLAY → driving |
 | `phone.mjs` | portrait + landscape phone layout, touch driving, overlapping buttons |
 | `shot.mjs`, `trace.mjs`, `stuck.mjs` | a screenshot; a suspension timeline; stuck-bot dumps |
 

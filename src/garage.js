@@ -1,6 +1,6 @@
 // The garage (shop + loadout) and the account panel. Plain DOM; the car you're looking at is a
 // live preview in the game scene behind the panel. Opened from the menu or from in-game settings.
-import { RIDES, WHEELS, ROOF, BUMPER, UPGRADES, HAT_IDS, HAT_PRICE, TIRE_RANGE, FREE_FOR_NOW, PAINTS } from './catalog.js';
+import { RIDES, WHEELS, ROOF, BUMPER, UPGRADES, HAT_IDS, HAT_PRICE, TIRE_RANGE, PAINTS } from './catalog.js';
 
 const $ = (id) => document.getElementById(id);
 const HAT_NAMES = {
@@ -13,14 +13,14 @@ export function setupGarage(game, { onClose } = {}) {
   const A = game.account;
   const rides = Object.fromEntries(game.vehicles.map((v) => [v.id, v]));
   const TABS = {
-    rides: { label: 'RIDES', slot: 'ride', items: () => game.vehicles.map((v) => ({ id: v.id, name: v.name, blurb: v.blurb, price: RIDES[v.id] ?? 0, stats: v })) },
-    wheels: { label: 'WHEELS', slot: 'wheels', items: () => [...Object.entries(WHEELS).map(([id, w]) => ({ id, ...w })), { id: 'monster', cat: 'upgrades', ...UPGRADES.monster, upgrade: true }] },
-    roof: { label: 'ROOF · E', slot: 'roof', items: () => Object.entries(ROOF).map(([id, w]) => ({ id, ...w })) },
-    bumper: { label: 'BUMPER · Q', slot: 'bumper', items: () => Object.entries(BUMPER).map(([id, w]) => ({ id, ...w })) },
-    paint: { label: 'PAINT', slot: 'paint', items: () => [{ id: -1, name: 'Team Colour', blurb: 'The colour of your seat in the room, so everyone looks different.', price: 0, swatch: null }, ...PAINTS.map((p, i) => ({ id: i, name: p.name, blurb: 'Dusty paint. It weathers in the glade.', price: 0, swatch: p.rgb }))] },
-    hats: { label: 'HATS', slot: 'hat', items: () => HAT_IDS.map((id) => ({ id, name: HAT_NAMES[id] || id, blurb: id === 'straw' ? 'The classic.' : 'Find it in the glade for free, or buy it here.', price: id === 'straw' ? 0 : HAT_PRICE })) },
+    rides: { label: 'RIDE', slot: 'ride', items: () => game.vehicles.map((v) => ({ id: v.id, name: v.name, blurb: v.blurb, price: RIDES[v.id] ?? 0, stats: v })) },
+    wheels: { label: 'WHEELS', slot: 'wheels', items: () => Object.entries(WHEELS).map(([id, w]) => ({ id, ...w })) },
+    roof: { label: 'ROOF', slot: 'roof', items: () => Object.entries(ROOF).map(([id, w]) => ({ id, ...w, blurb: id === 'none' ? w.blurb : `${w.blurb} (E)` })) },
+    bumper: { label: 'BUMPER', slot: 'bumper', items: () => Object.entries(BUMPER).map(([id, w]) => ({ id, ...w, blurb: id === 'none' || id === 'catcher' ? w.blurb : `${w.blurb} (Q)` })) },
+    paint: { label: 'PAINT', slot: 'paint', items: () => [{ id: -1, name: 'Team Colour', blurb: 'Your seat\'s colour in the room.', price: 0, swatch: null }, ...PAINTS.map((p, i) => ({ id: i, name: p.name, blurb: 'Dusty paint that weathers in the glade.', price: 0, swatch: p.rgb }))] },
+    hats: { label: 'HAT', slot: 'hat', items: () => HAT_IDS.map((id) => ({ id, name: HAT_NAMES[id] || id, blurb: id === 'straw' ? 'The classic.' : 'Found in the glade, or bought here.', price: id === 'straw' ? 0 : HAT_PRICE })) },
   };
-  let tab = 'rides', sel = null, trial = null, open = false, inGame = false;
+  let tab = 'rides', sel = null, open = false, inGame = false, msgT = 0;
 
   // ---------------------------------------------------------------- the account chip (menu + garage)
   const chip = $('acctChip');
@@ -33,85 +33,79 @@ export function setupGarage(game, { onClose } = {}) {
   A.onChange(() => { paintChip(); if (open) render(); });
   chip.onclick = () => openAccount();
 
-  // ---------------------------------------------------------------- garage
+  // ---------------------------------------------------------------- garage: tap to equip, the car wears it at once
   const tabsEl = $('gTabs'), itemsEl = $('gItems');
   tabsEl.innerHTML = Object.entries(TABS).map(([k, t]) => `<button data-tab="${k}">${t.label}</button>`).join('');
   for (const b of tabsEl.querySelectorAll('button')) b.onclick = () => { tab = b.dataset.tab; sel = null; render(); };
-  const catOf = (it) => it.cat || tab;
-  const owned = (it) => A.owns(catOf(it), it.id);
-  const equippedId = () => (A.setup[TABS[tab].slot]);
+  const owned = (it) => A.owns(tab, it.id);
+  const equippedId = () => A.setup[TABS[tab].slot];
+  const say = (text) => { $('gMsg').textContent = text; clearTimeout(msgT); msgT = setTimeout(() => ($('gMsg').textContent = ''), 2600); };
+
+  async function pick(it) {
+    sel = it;
+    if (owned(it) && it.id !== equippedId()) await A.equip({ [TABS[tab].slot]: it.id }); // owned (or free): wear it now
+    render();
+  }
 
   function render() {
     for (const b of tabsEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === tab);
-    const items = TABS[tab].items();
-    if (!sel) sel = items.find((it) => it.id === equippedId()) || items[0];
+    const items = TABS[tab].items(), eqId = equippedId();
+    if (!sel || !items.some((it) => it.id === sel.id)) sel = items.find((it) => it.id === eqId) || items[0];
+    itemsEl.classList.toggle('swatches', tab === 'paint');
     itemsEl.innerHTML = items.map((it) => {
-      const own = owned(it), eq = !it.upgrade && it.id === equippedId();
-      const tag = eq ? 'EQUIPPED' : FREE_FOR_NOW ? (it.upgrade ? 'UNLOCKED' : 'FREE') : own ? 'OWNED' : coins(it.price);
-      const sw = it.swatch ? `<i class="sw" style="background:rgb(${it.swatch.map((v) => Math.round(v * 200)).join(',')})"></i>` : tab === 'paint' ? '<i class="sw team"></i>' : '';
-      return `<button class="g-card${it.id === sel.id ? ' sel' : ''}${eq ? ' eq' : ''}${own ? '' : ' locked'}" data-id="${it.id}"><b>${sw}${it.name}</b><span>${tab === 'paint' && !eq ? 'FREE' : tag}</span></button>`;
+      const own = owned(it), eq = it.id === eqId, cls = `g-card${eq ? ' eq' : ''}${it.id === sel.id ? ' sel' : ''}${own ? '' : ' locked'}`;
+      if (tab === 'paint') {
+        const bg = it.swatch ? `rgb(${it.swatch.map((v) => Math.round(v * 200)).join(',')})` : '';
+        return `<button class="${cls} sw" data-id="${it.id}" title="${it.name}" aria-label="${it.name}"><i class="${it.swatch ? '' : 'team'}" style="${bg ? `background:${bg}` : ''}"></i></button>`;
+      }
+      return `<button class="${cls}" data-id="${it.id}">${it.name}${own ? '' : `<small>${coins(it.price)}</small>`}</button>`;
     }).join('');
-    for (const b of itemsEl.querySelectorAll('.g-card')) b.onclick = () => { sel = items.find((it) => String(it.id) === b.dataset.id); render(); };
+    for (const b of itemsEl.querySelectorAll('.g-card')) b.onclick = () => pick(items.find((it) => String(it.id) === b.dataset.id));
     const selCard = itemsEl.querySelector('.g-card.sel');
     if (selCard && selCard.scrollIntoView) selCard.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    // the selected item
     $('gName').textContent = sel.name;
     $('gBlurb').textContent = sel.blurb || '';
+    // ride stats
     const st = $('gStats');
-    if (tab === 'rides' && sel.stats) {
-      const v = sel.stats, bar = (l, x) => `<span>${l}</span><i style="--v:${Math.round(Math.min(1, x) * 100)}%"></i>`;
-      st.innerHTML = bar('SPEED', v.speed) + bar('WEIGHT', v.weight) + bar('GRIP', v.grip);
-    } else st.innerHTML = '';
-    // the tire slider (rubber tires and sawblades)
-    const tireish = tab === 'wheels' && ['tires', 'saw'].includes(sel.id);
+    if (tab === 'rides' && sel.stats) { const v = sel.stats, bar = (l, x) => `<span>${l}</span><i style="--v:${Math.round(Math.min(1, x) * 100)}%"></i>`; st.innerHTML = bar('SPEED', v.speed) + bar('WEIGHT', v.weight) + bar('GRIP', v.grip); st.hidden = false; }
+    else { st.innerHTML = ''; st.hidden = true; }
+    // the tire size, for rubber tires and sawblades
+    const tireish = tab === 'wheels' && ['tires', 'saw', 'magnet', 'square'].includes(sel.id) && owned(sel);
+    const big = A.owns('upgrades', 'monster');
     $('gTireRow').hidden = !tireish;
+    $('gBigTires').hidden = !tireish || big;
     if (tireish) {
-      const [lo, hi] = A.owns('upgrades', 'monster') ? TIRE_RANGE.monster : TIRE_RANGE.base;
-      const r = $('gTire');
+      const [lo, hi] = big ? TIRE_RANGE.monster : TIRE_RANGE.base, r = $('gTire');
       r.min = Math.round(lo * 100); r.max = Math.round(hi * 100);
-      if (document.activeElement !== r) r.value = Math.round((trial?.tire ?? A.setup.tire) * 100);
+      if (document.activeElement !== r) r.value = Math.round(A.setup.tire * 100);
       $('gTireVal').textContent = `${r.value}%`;
+      if (!big) $('gBigTires').textContent = `BIGGER ${coins(UPGRADES.monster.price)}`;
     }
-    // the action button
-    const own = owned(sel), eq = !sel.upgrade && sel.id === equippedId();
-    const btn = $('gAction');
-    btn.disabled = false;
-    if (sel.upgrade) { btn.textContent = own ? (FREE_FOR_NOW ? 'UNLOCKED' : 'OWNED') : `BUY ${coins(sel.price)}`; btn.disabled = own || A.coins < sel.price; }
-    else if (!own) { btn.textContent = `BUY ${coins(sel.price)}`; btn.disabled = A.coins < sel.price; }
-    else if (eq && !(tireish && trial && trial.tire !== A.setup.tire)) { btn.textContent = 'EQUIPPED'; btn.disabled = true; }
-    else btn.textContent = 'EQUIP';
-    if (!own && A.coins < sel.price) $('gMsg').textContent = `You need ${coins(sel.price - A.coins)} more. Smash, flip and explore to earn coins.`;
-    else if ($('gMsg').dataset.sticky !== '1') $('gMsg').textContent = '';
-    // try it on: the preview wears the selection even before you buy it
-    trial = { ...A.setup, ...(trial && trial.tire !== undefined ? { tire: trial.tire } : {}) };
-    if (!sel.upgrade) trial[TABS[tab].slot] = sel.id;
-    if (tireish) trial.tire = Number($('gTire').value) / 100;
-    game.preview(trial);
+    // BUY only for something you don't own yet
+    const btn = $('gAction'), own = owned(sel);
+    btn.hidden = own;
+    if (!own) { btn.textContent = `BUY ${coins(sel.price)}`; btn.disabled = A.coins < sel.price; }
+    // the preview wears what's equipped, or what you're looking at before you buy it
+    game.preview(own ? A.setup : { ...A.setup, [TABS[tab].slot]: sel.id });
     paintChip();
   }
 
-  $('gTire').oninput = () => { $('gTireVal').textContent = `${$('gTire').value}%`; trial = { ...trial, tire: Number($('gTire').value) / 100 }; game.preview({ ...trial }); render(); };
-
+  const tireNow = () => Number($('gTire').value) / 100;
+  $('gTire').oninput = () => { $('gTireVal').textContent = `${$('gTire').value}%`; game.preview({ ...A.setup, tire: tireNow() }); };
+  $('gTire').onchange = () => A.equip({ tire: tireNow() });
+  $('gBigTires').onclick = async () => { const r = await A.buy('upgrades', 'monster'); if (r.error) say(r.error); render(); };
   $('gAction').onclick = async () => {
-    const btn = $('gAction');
-    btn.disabled = true;
-    const msg = $('gMsg');
-    msg.dataset.sticky = '';
-    if (!owned(sel)) {
-      const r = await A.buy(catOf(sel), sel.id);
-      if (r.error) { msg.textContent = r.error; msg.dataset.sticky = '1'; render(); return; }
-      msg.textContent = `${sel.name} is yours!`; msg.dataset.sticky = '1';
-      if (sel.upgrade) { render(); return; }
-    }
-    const patch = { [TABS[tab].slot]: sel.id };
-    if (tab === 'wheels' && ['tires', 'saw'].includes(sel.id)) patch.tire = Number($('gTire').value) / 100;
-    await A.equip(patch);
+    $('gAction').disabled = true;
+    const r = await A.buy(tab, sel.id);
+    if (r.error) { say(r.error); render(); return; }
+    await A.equip({ [TABS[tab].slot]: sel.id });
+    say(`${sel.name} is yours!`);
     render();
   };
 
   function openGarage(fromGame = false) {
     open = true; inGame = fromGame;
-    tab = 'rides'; sel = null; trial = null;
+    tab = 'rides'; sel = null;
     $('garageUI').hidden = false;
     chip.hidden = false;
     document.body.classList.add('garage-open');
@@ -127,12 +121,13 @@ export function setupGarage(game, { onClose } = {}) {
   }
   $('gBack').onclick = closeGarage;
   window.addEventListener('hsg:garage', (e) => openGarage(!!(e.detail && e.detail.inGame)));
+  window.addEventListener('hsg:closeGarage', () => { if (open) closeGarage(); }); // the host started the match
   window.addEventListener('keydown', (e) => {
     if (!open) return;
     if (e.code === 'Escape') { e.stopImmediatePropagation(); if (!$('acctUI').hidden) closeAccount(); else closeGarage(); }
-    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && document.activeElement !== $('gTire')) {
       const items = TABS[tab].items(), i = items.findIndex((it) => it.id === sel.id);
-      sel = items[(i + (e.code === 'ArrowLeft' ? items.length - 1 : 1)) % items.length]; render();
+      pick(items[(i + (e.code === 'ArrowLeft' ? items.length - 1 : 1)) % items.length]);
     }
   }, true);
 

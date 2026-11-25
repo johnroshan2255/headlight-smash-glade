@@ -24,6 +24,7 @@
       <div id="hats">HATS 0/12</div>
       <div id="coins"></div>
     </div>
+    <div id="clock" hidden aria-live="off"><b id="clockT">8:00</b><small id="clockSub">MOST SMASHES WINS</small></div>
     <div class="hud-right">
       <!-- ASCII view switched off for the side view (re-enable together with the code marked "ASCII view off" in src/game.js)
       <button id="btnAscii" class="hud-btn wide" aria-pressed="false" title="ASCII view (V)">[ ] ASCII</button> -->
@@ -38,6 +39,31 @@
     <div id="boostBar">BOOST [##########]</div>
   </div>
   <div id="toast" hidden></div>
+  <!-- the room's lobby: who's here, colours (same colour = same team), the host's START -->
+  <section id="roomLobby" hidden aria-label="Room lobby">
+    <div class="rl-card">
+      <header class="lobby-head"><button class="back" id="rlLeave">&#8249; LEAVE</button><h2 id="rlTitle">ROOM</h2><button class="rl-code" id="rlCode" title="Copy the code"></button></header>
+      <p class="rl-status" id="rlStatus"></p>
+      <ul class="rl-players" id="rlPlayers"></ul>
+      <div class="rl-row"><span class="lbl">COLOUR</span><div class="rl-colors" id="rlColors"></div></div>
+      <p class="rl-teams" id="rlTeams"></p>
+      <div class="rl-host" id="rlHost">
+        <div class="chips" id="rlVis"><span class="lbl">ROOM</span><button data-v="0">PUBLIC</button><button data-v="1">PRIVATE</button></div>
+        <div class="chips" id="rlBots"><span class="lbl">BOTS</span><button data-b="0">0</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="6">6</button></div>
+        <div class="chips" id="rlTime"><span class="lbl">MINUTES</span><button data-t="6">6</button><button data-t="8">8</button><button data-t="10">10</button><button data-t="12">12</button></div>
+      </div>
+      <p class="rl-guest" id="rlGuest"></p>
+      <div class="rl-actions"><button class="mbtn" id="rlGarage">GARAGE</button><button class="mbtn go" id="rlGo">START</button></div>
+    </div>
+  </section>
+  <div id="matchEnd" hidden>
+    <div class="me-card">
+      <p class="me-k" id="meK">MATCH OVER</p>
+      <h2 id="meWinner"></h2>
+      <table><tbody id="meRows"></tbody></table>
+      <p class="me-next" id="meNext"></p>
+    </div>
+  </div>
   <div id="board" hidden>
     <table><thead><tr><th>Driver</th><th>Ride</th><th>Smashes</th></tr></thead><tbody id="boardRows"></tbody></table>
   </div>
@@ -80,12 +106,21 @@
             <option value="2">2</option>
             <option value="4">4</option>
             <option value="6">6</option>
-            <option value="-1">Fill empty seats</option>
           </select>
         </label>
-        <label class="row"><input type="checkbox" id="optPrivate" /> Private (hidden from the open glades list)</label>
+        <label>Match
+          <select id="optTime">
+            <option value="6">6 minutes</option>
+            <option value="8">8 minutes</option>
+            <option value="10">10 minutes</option>
+            <option value="12">12 minutes</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" id="optPrivate" /> Private (not listed under JOIN)</label>
         <p class="help" id="roomHintIn"></p>
       </div>
+      <label class="vol">Music <input type="range" id="optMusic" min="0" max="100" step="5" value="55" aria-label="Music volume" /></label>
+      <label class="vol">Sound <input type="range" id="optSfx" min="0" max="100" step="5" value="100" aria-label="Sound volume" /></label>
       <label>Quality
         <select id="optQuality">
           <option value="auto">Auto (adaptive)</option>
@@ -141,10 +176,12 @@
     <div class="g-panel">
       <nav class="g-tabs" id="gTabs"></nav>
       <div class="g-items" id="gItems"></div>
-      <div class="g-foot">
-        <div class="g-info"><b id="gName"></b><span id="gBlurb"></span><div class="bars" id="gStats"></div></div>
-        <label class="g-tire" id="gTireRow" hidden><span>TIRE SIZE <i id="gTireVal">100%</i></span><input type="range" id="gTire" min="70" max="140" step="5" value="100" /></label>
-        <button class="mbtn go" id="gAction">EQUIP</button>
+      <div class="g-info"><b id="gName"></b><span id="gBlurb"></span></div>
+      <div class="g-extra">
+        <div class="bars" id="gStats"></div>
+        <label class="g-tire" id="gTireRow" hidden>SIZE<input type="range" id="gTire" min="70" max="140" step="5" value="100" /><i id="gTireVal">100%</i></label>
+        <button class="ghost" id="gBigTires" hidden></button>
+        <button class="mbtn go" id="gAction" hidden>BUY</button>
       </div>
       <p class="g-msg" id="gMsg"></p>
     </div>
@@ -239,49 +276,32 @@
         <button id="btnGarage" class="mbtn">GARAGE</button>
       </nav>
 
-      <!-- co-op lobby -->
+      <!-- co-op lobby: join a code / an open glade, or create a private room -->
       <section id="lobby" hidden aria-label="Co-op lobby">
         <header class="lobby-head">
           <button id="btnBack" class="back" aria-label="Back to the menu">&#8249; BACK</button>
           <h2>CO-OP</h2>
-          <span class="lobby-net" id="lobbyNet"></span>
+          <span></span>
         </header>
+        <nav class="seg" role="tablist"><button id="lTabJoin" class="on" role="tab">JOIN</button><button id="lTabCreate" role="tab">CREATE</button></nav>
 
-        <div class="lobby-body">
-          <div class="lobby-col">
-            <nav class="a-tabs l-tabs"><button id="lTabJoin" class="on">JOIN</button><button id="lTabCreate">CREATE ROOM</button></nav>
-            <div id="lJoin">
-              <label class="lbl" for="optRoom">ROOM CODE</label>
-              <div class="code-row">
-                <input id="optRoom" maxlength="8" placeholder="PUBLIC" autocomplete="off" spellcheck="false" autocapitalize="characters" />
-              </div>
-              <p class="hint" id="roomHint">Type a friend's code, or leave it empty for the public glade.</p>
-              <div class="glades" id="glades" aria-live="polite"></div>
-            </div>
-            <div id="lCreate" hidden>
-              <span class="lbl">YOUR ROOM CODE</span>
-              <div class="code-row">
-                <b class="bigcode" id="newCode">----</b>
-                <button id="btnNewCode" class="ghost" title="A different code">NEW</button>
-                <button id="btnCopyCode" class="ghost" title="Copy the code">COPY</button>
-              </div>
-              <p class="hint">Share this code. Friends pick CO-OP, then type it under JOIN.</p>
-              <span class="lbl">BOTS</span>
-              <div class="chips" id="botChips"><button data-b="0" class="on">NONE</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="-1">FILL SEATS</button></div>
-              <label class="check"><input type="checkbox" id="optHide" checked /> Hidden from the open glades list</label>
-            </div>
+        <div id="lJoin" class="l-pane">
+          <div class="code-row">
+            <input id="optRoom" maxlength="6" placeholder="ROOM CODE" aria-label="Room code" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+            <button id="btnJoin" class="mbtn go">JOIN</button>
           </div>
-
-          <div class="lobby-col">
-            <label class="lbl" for="optName">NAME</label>
-            <input id="optName" class="field" maxlength="16" autocomplete="off" spellcheck="false" />
-            <span class="lbl">YOUR RIDE</span>
-            <button class="ride-line" id="lobbyRide">MUDRUNNER</button>
-            <p class="hint">Change it in the garage.</p>
-          </div>
+          <div class="glades" id="glades" aria-live="polite"></div>
         </div>
 
-        <button id="btnJoin" class="mbtn go wide">JOIN THE GLADE</button>
+        <div id="lCreate" class="l-pane" hidden>
+          <div class="chips" id="visChips"><span class="lbl">ROOM</span><button data-v="0" class="on">PUBLIC</button><button data-v="1">PRIVATE</button></div>
+          <div class="chips" id="botChips"><span class="lbl">BOTS</span><button data-b="0" class="on">0</button><button data-b="2">2</button><button data-b="4">4</button><button data-b="6">6</button></div>
+          <div class="chips" id="timeChips"><span class="lbl">MINUTES</span><button data-t="6">6</button><button data-t="8" class="on">8</button><button data-t="10">10</button><button data-t="12">12</button></div>
+          <button id="btnCreate" class="mbtn go wide">CREATE ROOM</button>
+        </div>
+
+        <label class="name-row"><span class="lbl">NAME</span><input id="optName" class="field" maxlength="16" autocomplete="off" spellcheck="false" /></label>
+        <p class="l-msg" id="lobbyMsg" hidden></p>
       </section>
 
       <button id="btnRetry" hidden>RETRY</button>
