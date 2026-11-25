@@ -216,7 +216,7 @@ async function boot() {
   const esc = (t) => String(t).replace(/[<>&"]/g, '');
   async function pollRooms() {
     let list = null;
-    try { const r = await fetch('/rooms', { cache: 'no-store' }); if (r.ok) list = await r.json(); } catch { /* offline */ }
+    try { const r = await fetch(`${game.serverHttp}/rooms`, { cache: 'no-store' }); if (r.ok) list = await r.json(); } catch { /* offline */ }
     if (!Array.isArray(list)) { gladesEl.innerHTML = ''; return; }
     list.sort((a, b) => (a.phase === 'lobby') - (b.phase === 'lobby') || b.players - a.players).reverse();
     gladesEl.innerHTML = !list.length ? '<p class="l-empty">No public rooms right now. CREATE one, or type a code.</p>' : list.slice(0, 6).map((r) => {

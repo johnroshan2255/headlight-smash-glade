@@ -1150,6 +1150,7 @@ export async function startGame(loader) {
   return {
     summary: serverUrl ? 'Server found: online play available' : 'No server: solo with bots',
     online: !!serverUrl,
+    serverHttp: serverUrl ? Net.httpBase(serverUrl) : '', // the room list lives on the game server
     vehicles: VEHICLES.map((v) => ({ id: v.id, name: v.name, blurb: v.blurb, speed: v.top / 21, weight: v.mass / 340, grip: v.accel / 22 })),
     hats: () => ['straw', ...[...sandbox.ownedHats].filter((h) => h !== 'straw')].map((id) => ({ id, name: HATS[id] || id })),
     account,

@@ -31,12 +31,24 @@ export class Net {
   on(type, fn) { if (!this.handlers.has(type)) this.handlers.set(type, []); this.handlers.get(type).push(fn); }
   emit(type, msg) { for (const fn of this.handlers.get(type) || []) fn(msg); }
 
+  /** the server's http(s) address for wss://… (room list, health, accounts) */
+  static httpBase(url) { return String(url).replace(/^ws/, 'http').replace(/\/$/, ''); }
+
   /** Where is the server? ?server=wss://... > build-time VITE_SERVER_URL > same origin (when our server hosts the page). */
   static async findServer() {
     const q = new URLSearchParams(location.search).get('server');
     if (q) return q;
     const env = import.meta.env.VITE_SERVER_URL;
-    if (env) return env;
+    if (env) { // the game is hosted apart from its server (Vercel + Railway): make sure the server's up
+      try {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), 4000);
+        const r = await fetch(`${Net.httpBase(env)}/health`, { signal: ctl.signal, cache: 'no-store' });
+        clearTimeout(t);
+        if (r.ok) return env;
+      } catch { /* unreachable: solo */ }
+      return null;
+    }
     try {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), 1500);

@@ -179,7 +179,7 @@ function serveStatic(req, res) {
   let file = path.join(ROOT, url === '/' ? 'index.html' : url);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
-  if (!fs.existsSync(file)) { res.writeHead(404); res.end('Build the game first: npm run build'); return; }
+  if (!fs.existsSync(file)) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'HEADLIGHT: SMASH GLADE game server (rooms + accounts). The game itself is hosted separately.' : 'not found'); return; } // backend only (no dist/)
   const ext = path.extname(file), st = fs.statSync(file);
   const headers = { 'content-type': MIME[ext] || 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable', vary: 'accept-encoding' };
   // text: brotli or gzip, compressed once and kept in memory
@@ -227,7 +227,22 @@ await gameServer.listen(PORT, '0.0.0.0');
 const colyseusHandlers = httpServer.listeners('request');
 httpServer.removeAllListeners('request');
 const isColyseus = (url = '') => url.startsWith('/matchmake') || url.startsWith('/__') || url.startsWith('/auth');
+// The game can be hosted elsewhere (Vercel): let it call /rooms, /health and /api from its own
+// origin. CORS_ORIGINS (comma-separated) limits who may; unset = any (no cookies are used, accounts
+// travel as a bearer token).
+const CORS = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+function cors(req, res) {
+  const origin = req.headers.origin;
+  if (!origin) return;
+  if (CORS.length && !CORS.includes(origin)) return;
+  res.setHeader('access-control-allow-origin', CORS.length ? origin : '*');
+  res.setHeader('access-control-allow-headers', 'content-type, authorization');
+  res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+  res.setHeader('access-control-max-age', '86400');
+  if (CORS.length) res.setHeader('vary', 'origin');
+}
 httpServer.on('request', (req, res) => {
+  if (!isColyseus(req.url)) { cors(req, res); if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; } }
   if (isColyseus(req.url)) for (const h of colyseusHandlers) h.call(httpServer, req, res);
   else if ((req.url || '').startsWith('/api/')) api(req, res, (req.url || '').split('?')[0]);
   else serveStatic(req, res);
