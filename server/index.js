@@ -176,6 +176,8 @@ function serveStatic(req, res) {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
   if (url === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
   if (url === '/rooms') { listRooms(res); return; }
+  // HSG_BACKEND_ONLY: this server hosts rooms and accounts only (the game itself is on Vercel)
+  if (process.env.HSG_BACKEND_ONLY) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'HEADLIGHT: SMASH GLADE game server (rooms + accounts). Play the game at its own address.' : 'not found'); return; }
   let file = path.join(ROOT, url === '/' ? 'index.html' : url);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
