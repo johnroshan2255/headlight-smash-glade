@@ -1,4 +1,4 @@
-# HEADLIGHT: SMASH GLADE
+# FOGBASH
 
 Drop-in/drop-out multiplayer demolition for up to **8 tiny headlight buggies**, seen from the side
 in an endless, foggy glade. Everything is a black silhouette against layered grey-teal mist. The only
@@ -15,7 +15,7 @@ npm install
 npm run play       # build + start the game server on http://localhost:2567 (online + solo)
 npm run dev        # Vite dev server (solo with bots, or add ?server=ws://localhost:2567)
 npm run server     # just the Colyseus server (serves dist/ too)
-npm run itch       # static build zip for itch.io: release/headlight-smash-glade-web.zip
+npm run itch       # static build zip for itch.io: release/fogbash-web.zip
 ```
 
 The menu has three buttons. **PLAY** drops you into a solo glade with bots, on the map shown under the buttons (‹ › picks Endless Glade, The Glade, Moon Crater, The Bog or The Quarry; the world behind the menu switches to show it). **CO-OP** is for rooms:

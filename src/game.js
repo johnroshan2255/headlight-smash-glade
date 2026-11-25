@@ -1,4 +1,4 @@
-// HEADLIGHT: SMASH GLADE, side view. Wires the 2D world, physics, cars, props, bots, network,
+// FOGBASH, side view. Wires the 2D world, physics, cars, props, bots, network,
 // camera, lights and HUD together. (Side-view rewrite: see next.md for status.)
 import * as pc from 'playcanvas';
 import { AsciiRenderer } from './ascii.js';

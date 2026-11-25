@@ -1,4 +1,4 @@
-# next.md: where Smash Glade is and what's next
+# next.md: where Fogbash is and what's next
 
 _Last session: 2026-11-25. Rooms, matches, audio and parts were committed in acfd554. The maps came after that and are not committed yet._
 

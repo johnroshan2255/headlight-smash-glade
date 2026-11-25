@@ -1,5 +1,5 @@
 // Packages dist/ for itch.io: index.html at the zip root, relative paths, license notices.
-// Usage: npm run itch   ->  release/headlight-smash-glade-web.zip
+// Usage: npm run itch   ->  release/fogbash-web.zip
 import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
@@ -12,7 +12,7 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('dist/index.h
 // third-party notices (PlayCanvas is MIT and asks for its notice to ship with copies)
 const pcLicense = fs.readFileSync(path.join(root, 'node_modules/playcanvas/LICENSE'), 'utf8');
 fs.writeFileSync(path.join(dist, 'THIRD-PARTY-LICENSES.txt'),
-  `Headlight: Smash Glade uses the PlayCanvas engine (https://github.com/playcanvas/engine)\n\n${pcLicense}\n`);
+  `Fogbash uses the PlayCanvas engine (https://github.com/playcanvas/engine)\n\n${pcLicense}\n`);
 
 // sanity: every asset path in index.html must be relative (itch serves from a sub-path)
 const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
@@ -20,7 +20,7 @@ const absolute = [...html.matchAll(/(?:src|href)="(\/[^"]*)"/g)].map((m) => m[1]
 if (absolute.length) throw new Error(`absolute paths in index.html: ${absolute.join(', ')}`);
 
 fs.mkdirSync(out, { recursive: true });
-const zip = path.join(out, 'headlight-smash-glade-web.zip');
+const zip = path.join(out, 'fogbash-web.zip');
 if (fs.existsSync(zip)) fs.unlinkSync(zip);
 execFileSync('zip', ['-r', '-X', '-9', zip, '.', '-x', '.DS_Store', '*/.DS_Store'], { cwd: dist, stdio: 'inherit' });
 

@@ -1,4 +1,4 @@
-// HEADLIGHT: SMASH GLADE: Colyseus room server + static file host.
+// FOGBASH: Colyseus room server + static file host.
 //
 //   npm run play     -> builds the game, then serves it and the multiplayer rooms on :2567
 //   npm run server   -> serves an existing dist/ build + rooms
@@ -177,11 +177,11 @@ function serveStatic(req, res) {
   if (url === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
   if (url === '/rooms') { listRooms(res); return; }
   // HSG_BACKEND_ONLY: this server hosts rooms and accounts only (the game itself is on Vercel)
-  if (process.env.HSG_BACKEND_ONLY) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'HEADLIGHT: SMASH GLADE game server (rooms + accounts). Play the game at its own address.' : 'not found'); return; }
+  if (process.env.HSG_BACKEND_ONLY) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'FOGBASH game server (rooms + accounts). Play the game at its own address.' : 'not found'); return; }
   let file = path.join(ROOT, url === '/' ? 'index.html' : url);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
-  if (!fs.existsSync(file)) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'HEADLIGHT: SMASH GLADE game server (rooms + accounts). The game itself is hosted separately.' : 'not found'); return; } // backend only (no dist/)
+  if (!fs.existsSync(file)) { res.writeHead(url === '/' ? 200 : 404, { 'content-type': 'text/plain' }); res.end(url === '/' ? 'FOGBASH game server (rooms + accounts). The game itself is hosted separately.' : 'not found'); return; } // backend only (no dist/)
   const ext = path.extname(file), st = fs.statSync(file);
   const headers = { 'content-type': MIME[ext] || 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable', vary: 'accept-encoding' };
   // text: brotli or gzip, compressed once and kept in memory
@@ -249,7 +249,7 @@ httpServer.on('request', (req, res) => {
   else if ((req.url || '').startsWith('/api/')) api(req, res, (req.url || '').split('?')[0]);
   else serveStatic(req, res);
 });
-console.log(`\n  HEADLIGHT: SMASH GLADE  ->  http://localhost:${PORT}  (rooms on the same port)\n`);
+console.log(`\n  FOGBASH  ->  http://localhost:${PORT}  (rooms on the same port)\n`);
 
 // hosts like Railway stop the old copy with SIGTERM on every deploy: save the accounts first
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { try { flush(); } catch (e) { console.error('save failed', e); } process.exit(0); });

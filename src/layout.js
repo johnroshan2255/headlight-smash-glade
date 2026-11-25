@@ -1,5 +1,5 @@
-// HEADLIGHT: SMASH GLADE, side view: shared constants. The world itself is generated in gen.js.
-export const TITLE = 'HEADLIGHT: SMASH GLADE';
+// FOGBASH, side view: shared constants. The world itself is generated in gen.js.
+export const TITLE = 'FOGBASH';
 
 export const RESPAWN_SECONDS = 20;
 export const GADGET_SECONDS = 25;

@@ -1,6 +1,6 @@
 {
-  "name": "Headlight: Smash Glade",
-  "short_name": "Smash Glade",
+  "name": "Fogbash",
+  "short_name": "Fogbash",
   "description": "Drop-in multiplayer demolition derby for tiny headlight buggies in a foggy, explosive forest.",
   "start_url": "./?source=app",
   "scope": "./",
