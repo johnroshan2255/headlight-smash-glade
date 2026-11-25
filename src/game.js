@@ -310,6 +310,7 @@ export async function startGame(loader) {
     onWrecked(msg);
     c.tornBy = null;
     if (c === me) account.stat({ wrecks: 1 });
+    if (c === me && !net.online) portal.midgameAd(); // solo: a wreck is a natural break (a few minutes apart at most; play pauses)
     setTimeout(() => {
       if (!cars.has(c.id)) return; // left while wrecked
       c.unwreck(pickSpawn(c, c.body.p[0]));
@@ -397,9 +398,10 @@ export async function startGame(loader) {
     $('matchEnd').hidden = false;
     if (!matchN) return; // joined during the break: no coins for a match we didn't play
     const mySide = sides.find((G) => G.rows.some((r) => r.me)), myRank = mySide ? 1 + sides.filter((G) => G.score > mySide.score).length : 99;
-    if (mySide && winners.includes(mySide)) { earn('win'); toast(teamMode && mySide.rows.length > 1 ? 'Your team won the match!' : 'You won the match!', 3); sfx.play('jingle'); }
+    if (mySide && winners.includes(mySide)) { earn('win'); toast(teamMode && mySide.rows.length > 1 ? 'Your team won the match!' : 'You won the match!', 3); sfx.play('jingle'); portal.happytime(); }
     else if (mySide && mySide.score > 0 && myRank <= 3) earn('podium');
     else earn('match');
+    portal.midgameAd(); // the results: a break between matches (nobody is driving)
   }
   function updateClock() {
     const m = net.online && net.match && net.phase !== 'lobby' && net.match.n > 0 ? net.match : null, el = $('clock');
@@ -458,13 +460,22 @@ export async function startGame(loader) {
   }
   const roomMap = () => (net.online ? net.settings.map || 'endless' : 'endless');
 
+  /** LEAVE (the room's lobby or ≡): out of the room first, then a break for an ad if one is due, then the menu */
+  let leaving = false;
+  async function leaveToMenu() {
+    if (leaving) return;
+    leaving = true; paused = true;
+    portal.leftRoom(); net.leave();
+    await portal.midgameAd({ minGap: 60000 });
+    location.reload();
+  }
   // the room's lobby (before the first match and between matches)
   const roomLobby = setupRoomLobby({
     net,
     enter: () => enterHook && enterHook(),
     inGame: () => started,
     garage: () => { if (!started && garageHook) garageHook(); else window.dispatchEvent(new CustomEvent('hsg:garage', { detail: { inGame: started } })); },
-    leave: () => { portal.leftRoom(); net.leave(); location.reload(); },
+    leave: () => leaveToMenu(),
   });
   net.on('match', onMatch);
 
@@ -894,7 +905,7 @@ export async function startGame(loader) {
   $('btnClose').addEventListener('click', () => openSettings(false));
   let leaveT = 0;
   $('btnLeave').addEventListener('click', () => { // tap twice: leaving a room you host closes it for everyone
-    if (performance.now() - leaveT < 2500) { portal.leftRoom(); net.leave(); location.reload(); return; }
+    if (performance.now() - leaveT < 2500) { leaveToMenu(); return; }
     leaveT = performance.now();
     $('btnLeave').textContent = net.online && net.isHost ? 'CLOSE ROOM?' : 'SURE?';
     setTimeout(() => { $('btnLeave').textContent = 'LEAVE'; }, 2500);
@@ -1066,7 +1077,7 @@ export async function startGame(loader) {
     // if (input.sightPressed) setAscii(!asciiOn);
     if (forcedAsciiT > 0) { forcedAsciiT -= dt; if (!ascii.ascii) { ascii.setOptions({ ascii: true }); resized(); } if (forcedAsciiT <= 0 && !asciiOn) { ascii.setOptions({ ascii: false }); resized(); } }
     if (started && !paused && me && dt > 1e-5 && roomLobby.open) { me.input.dir = 0; me.input.boost = false; } // in the room's lobby: hands off
-    else if (started && !paused && me && dt > 1e-5) {
+    else if (started && !paused && me && dt > 1e-5 && !(portal.adPlaying() && !net.online)) { // (solo pauses for an ad)
       const inp = me.input;
       inp.dir = input.dir; inp.boost = input.boost;
       if (input.hopPressed) inp.hop = true;
@@ -1189,7 +1200,7 @@ export async function startGame(loader) {
         await net.connect(serverUrl, { how, code, name: (name || account.name || 'Driver').slice(0, 16), vehicle: vehicleSpec(setup.ride).id, hat: setup.hat || 'straw', private: priv, bots, time, map });
       } catch (err) {
         console.warn('join failed', err);
-        return { error: how === 'join' ? `No room ${code} (or it's full).` : 'Could not reach the server.' };
+        return { error: how === 'join' ? `No room ${code} to join: it's full (8 players), or it has closed.` : 'Could not reach the server.' };
       }
       seenPhase = net.phase;
       applyMap(roomMap());

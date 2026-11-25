@@ -250,11 +250,11 @@ async function boot() {
     joining = false; syncRoom();
     if (r.error) { $('lobbyMsg').textContent = r.error; $('lobbyMsg').hidden = false; return; }
     if (how === 'join') ls.set('room', code);
-    inRoom = true;
+    inRoom = true; roomCode = code;
     clearInterval(pollTimer);
     els.lobby.hidden = true; // the room's lobby takes over
   }
-  let inRoom = false;
+  let inRoom = false, roomCode = '';
   $('btnJoin').addEventListener('click', () => joinRoom('join', roomEl.value));
   $('btnCreate').addEventListener('click', () => joinRoom('create', freshCode()));
 
@@ -307,10 +307,13 @@ async function boot() {
   // ---------------------------------------------------------------- CrazyGames: invites and instant multiplayer
   // Opened from a friend's invite link: straight into their room (once: if that room has closed and
   // the page reloads, don't try it again). "Play with friends" (instant multiplayer): a new private room.
-  const invited = portal.inviteRoom();
+  // A friend's invite accepted while we were busy comes first (we reloaded to take it); then an
+  // invite link (CrazyGames' own, or this page's ?room=CODE elsewhere).
+  const next = portal.takeJoinNext();
+  const invited = next || portal.inviteRoom() || (!portal.ON_CRAZY && q.get('room') ? q.get('room').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) : null);
   // join under the CrazyGames name, not a stand-in (at most 3 s wait for it)
   if (invited || portal.instantMultiplayer()) await Promise.race([portalName, new Promise((r) => setTimeout(r, 3000))]);
-  const tried = (() => { try { return sessionStorage.getItem('hsg.invited'); } catch { return null; } })();
+  const tried = next ? null : (() => { try { return sessionStorage.getItem('hsg.invited'); } catch { return null; } })();
   const joinFromInvite = (code) => {
     if (!code || begun || inRoom || joining || !game.online) return;
     try { sessionStorage.setItem('hsg.invited', code); } catch { /* */ }
@@ -324,7 +327,15 @@ async function boot() {
     showLobby(true); setLobbyMode('create'); newPrivate = true;
     joinRoom('create', freshCode());
   }
-  portal.onJoinInvite(joinFromInvite); // invited while already on the menu
+  // a friend invites us while the game is open: on the menu, straight in; while driving or in another
+  // room, reload into theirs (the reload leaves the old room cleanly)
+  portal.onJoinInvite((code) => {
+    if (!code || code === roomCode) return;
+    if (!begun && !inRoom && !joining) { joinFromInvite(code); return; }
+    portal.joinAfterReload(code);
+    portal.leftRoom();
+    location.reload();
+  });
 }
 
 boot();

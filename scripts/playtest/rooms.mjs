@@ -22,7 +22,7 @@ await A.click('#btnCreate');
 await A.waitForSelector('#roomLobby:not([hidden])', { timeout: 15000 }); await sleep(800);
 let a = await info(A);
 const code = await A.evaluate(() => window.__hsg.net.code);
-ok(!(await inGame(A)) && a.phase === 'lobby' && a.go === 'START' && !a.goOff, `CREATE puts the host in the room's lobby (not the game), with START (room ${code})`);
+ok(!(await inGame(A)) && a.phase === 'lobby' && a.go === 'NEED 2 DRIVERS' && a.goOff, `CREATE puts the host in the room's lobby (not the game); START waits for a second driver (room ${code})`);
 await A.screenshot({ path: `${SHOTS}rooms-lobby-host.png` });
 let list = await rooms();
 ok(list.some((r) => r.code === code && r.host === 'Alpha' && r.phase === 'lobby'), `the public room is listed under JOIN as Alpha's (${JSON.stringify(list.map((r) => [r.host, r.code, r.phase]))})`);

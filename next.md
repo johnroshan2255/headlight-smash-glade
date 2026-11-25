@@ -153,7 +153,8 @@ All of these pass:
   - Build with `VITE_SERVER_URL=wss://<railway app> npm run crazygames` and upload `release/fogbash-crazygames.zip`.
   - Railway: keep `CORS_ORIGINS` unset, or allow the CrazyGames origins. Give `HSG_DATA` a volume, or accounts reset on every deploy.
   - Progress uses CrazyGames' Data Module, so pick "Yes, using the Data Module" on the submission form.
-  - Not done: ads (Basic Launch has none). Instant multiplayer is untested on the real portal.
+  - Also built: midgame ads at breaks, happytime on a match win, the INVITE FRIENDS button with CrazyGames' invite button, joining an invite while busy, and the 2–8 lobby size (min checked by the server).
+  - Untested on the real portal: instant multiplayer, the join-invite listener, real ads.
 - **Launch-prep fixes (2026-11-25):**
   - F toggled fullscreen as well as firing the crate power-up. F is now only the power-up.
   - Esc on the title menu or in a room's lobby opened the in-game ≡ card. It now opens only while driving; P opens it too.

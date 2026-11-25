@@ -29,9 +29,13 @@ VITE_SERVER_URL=wss://<railway-app> npm run crazygames   # CrazyGames zip: relea
 - **Progress (coins, purchases, garage)** is saved with CrazyGames' **Data Module** (`portalStorage()` in `portal.js`, used by `account.js`). It stays in the browser for guests and follows signed-in players to every device. A profile already saved in the browser moves over the first time.
 - **On the submission form:** pick "Yes, using the Data Module" for progress save. Otherwise the module is off and the game falls back to `localStorage`.
 - **Multiplayer:**
-  - The room code button copies an invite link (`?room=` in `czy_invite_params`).
-  - Opening an invite joins that room, and instant multiplayer creates a private room.
-  - `updateRoom` / `leftRoom` keep CrazyGames informed.
+  - The room's lobby has **INVITE FRIENDS**, which copies an invite link (`?room=` in `czy_invite_params`). CrazyGames' own invite button (`showInviteButton`) shows while there's a free seat.
+  - Opening an invite joins that room. An invite accepted while you're driving or in another room reloads into the friend's room.
+  - Instant multiplayer creates a private room you host.
+  - `updateRoom` / `leftRoom` keep CrazyGames informed. A full room is reported as not joinable.
+  - **Lobby size 2–8:** a match needs two drivers (players, or a player and bots), and the server checks it too. A room holds 8; a 9th player is told it's full.
+- **Ads:** midgame ads only at natural breaks: a solo wreck, a match's results, or LEAVE. They come at most once every 3 minutes, never right after loading. The game is muted and gameplay stopped while one plays, and solo play pauses. In Basic Launch the SDK answers "ads disabled" at once.
+- **happytime()** when you win a match.
 - **The game server** must be reachable from crazygames.com: leave `CORS_ORIGINS` unset on Railway, or add the CrazyGames origins to it.
 - **Local check:** serve `dist-crazygames` on localhost, where the SDK runs in `local` mode (`?muteAudio=true` works there).
 

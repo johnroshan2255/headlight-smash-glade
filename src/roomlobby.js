@@ -2,7 +2,11 @@
 // team), the host's settings and START. Shown after CREATE / JOIN, before the first match, and
 // again after every match's results. Plain DOM; no engine imports.
 import { PAINTS, MAP_LIST, mapName } from './catalog.js';
-import { inviteLink } from './portal.js';
+import { inviteLink, adPlaying } from './portal.js';
+
+/** a match needs at least two drivers (players + bots); a room holds at most 8 players */
+export const MIN_DRIVERS = 2;
+export const MAX_PLAYERS = 8;
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[<>&"]/g, '');
@@ -16,6 +20,8 @@ export const teamName = (i) => PAINTS[((i % PAINTS.length) + PAINTS.length) % PA
  */
 export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
   const el = $('roomLobby');
+  /** everyone who'd drive in this match: the players, plus the bots the host added (-1 fills the seats) */
+  const drivers = () => { const n = net.players.length, b = net.settings.bots; return n + (b < 0 ? MAX_PLAYERS - n : Math.max(0, Math.min(b, MAX_PLAYERS - n))); };
   let open = false;
   // colour swatches: tap one to take it (several players on one colour make a team)
   $('rlColors').innerHTML = PAINTS.map((p, i) => `<button data-c="${i}" title="${p.name}" aria-label="${p.name}" style="--c:${teamCSS(i)}"></button>`).join('');
@@ -26,8 +32,20 @@ export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
   chips('rlVis', 'v', (v) => net.send('roomSettings', { private: !!v }));
   for (const b of $('rlMap').querySelectorAll('button')) b.onclick = () => net.isHost && net.phase !== 'playing' && net.send('roomSettings', { map: b.dataset.m });
   $('rlGo').onclick = () => {
-    if (net.phase === 'lobby' && net.isHost) net.send('start', {});
+    if (adPlaying()) return; // (the host's own ad break)
+    if (net.phase === 'lobby' && net.isHost && drivers() >= MIN_DRIVERS) net.send('start', {});
     else if (net.phase === 'playing' && !inGame()) enter(); // a match is on: drive straight in
+  };
+  // INVITE FRIENDS: a link that opens the game straight into this room (CrazyGames: their invite
+  // link; elsewhere this page with ?room=CODE, which joins it too)
+  const link = () => inviteLink(net.code) || `${location.origin}${location.pathname}?room=${encodeURIComponent(net.code)}`;
+  $('rlInvite').onclick = async () => {
+    let ok = true;
+    try { await navigator.clipboard.writeText(link()); } catch { ok = false; }
+    const b = $('rlInvite');
+    b.textContent = ok ? 'LINK COPIED: SEND IT TO A FRIEND' : `ROOM CODE ${net.code}`;
+    b.classList.add('copied');
+    clearTimeout(b._t); b._t = setTimeout(() => { b.textContent = 'INVITE FRIENDS'; b.classList.remove('copied'); }, 2600);
   };
   $('rlGarage').onclick = () => garage();
   $('rlLeave').onclick = () => leave();
@@ -66,11 +84,15 @@ export function setupRoomLobby({ net, enter, inGame, garage, leave }) {
     // what happens next
     const left = net.match && phase === 'playing' ? Math.max(0, Math.ceil((net.match.endsAt - net.serverNow()) / 1000)) : 0;
     const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
-    $('rlStatus').textContent = phase === 'playing' ? `A match is on: ${clock} left` : phase === 'results' ? 'The match just ended. Back to the lobby in a moment.' : host ? `${players.length} in the room. Start when everyone's ready.` : 'Waiting for the host to start the match.';
+    const enough = drivers() >= MIN_DRIVERS, full = players.length >= MAX_PLAYERS;
+    $('rlStatus').textContent = phase === 'playing' ? `A match is on: ${clock} left` : phase === 'results' ? 'The match just ended. Back to the lobby in a moment.'
+      : host ? (!enough ? 'You need one more driver: invite a friend, or add bots.' : `${players.length}/${MAX_PLAYERS} in the room. Start when everyone's ready.`) : `${players.length}/${MAX_PLAYERS} in the room. Waiting for the host to start the match.`;
     $('rlGuest').textContent = !host ? `${S.private ? 'Private' : 'Public'} room · ${S.bots > 0 ? `${S.bots} bots` : 'no bots'} · ${S.time} minutes · ${mapName(S.map)}` : '';
+    // a full room has no seat for another friend
+    $('rlInvite').hidden = full;
     const go = $('rlGo');
     if (phase === 'playing' && !inGame()) { go.hidden = false; go.disabled = false; go.textContent = 'DRIVE IN'; }
-    else if (host && phase === 'lobby') { go.hidden = false; go.disabled = false; go.textContent = net.match && net.match.n ? 'START NEXT MATCH' : 'START'; }
+    else if (host && phase === 'lobby') { go.hidden = false; go.disabled = !enough; go.textContent = !enough ? 'NEED 2 DRIVERS' : net.match && net.match.n ? 'START NEXT MATCH' : 'START'; }
     else { go.hidden = false; go.disabled = true; go.textContent = phase === 'lobby' ? 'WAITING FOR HOST' : 'GET READY'; }
   }
 

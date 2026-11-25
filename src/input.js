@@ -38,7 +38,8 @@ export class Input {
       }
       this.keys.add(e.code);
       this.anyInput = true;
-      if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Tab') e.preventDefault();
+      // keys that would scroll the page around the game (in an iframe: the portal's page)
+      if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Tab' || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Home' || e.code === 'End') e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this._touch.boost = this._touch.left = this._touch.right = false; this.releaseStick(); this.look.clear(); });

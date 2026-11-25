@@ -18,7 +18,8 @@ import { MAP_IDS } from '../src/catalog.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const PORT = Number(process.env.PORT || 2567);
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 8; // a room's seats (CrazyGames lobby size: 2 to 8)
+const MIN_DRIVERS = 2; // a match needs two drivers: two players, or one and a bot
 const HOST_ONLY = new Set(['world', 'grant', 'spawnProp']); // only the elected host may send these
 
 class GladeRoom extends Room {
@@ -125,8 +126,9 @@ class GladeRoom extends Room {
       this.sendRoster();
       return;
     }
-    if (type === 'start') { // the host starts the match from the lobby
-      if (client.sessionId === this.hostId && this.match.phase === 'lobby') this.startMatch();
+    if (type === 'start') { // the host starts the match from the lobby: at least two drivers (players + bots)
+      const bots = this.settings.bots < 0 ? MAX_PLAYERS - this.roster.size : Math.min(this.settings.bots, MAX_PLAYERS - this.roster.size);
+      if (client.sessionId === this.hostId && this.match.phase === 'lobby' && this.roster.size + Math.max(0, bots) >= MIN_DRIVERS) this.startMatch();
       return;
     }
     if (type === 'pickColor') { // your colour; share one with friends to be a team
