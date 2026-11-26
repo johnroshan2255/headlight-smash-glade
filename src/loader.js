@@ -17,7 +17,8 @@ const els = {
 };
 
 const TIPS = [
-  'Up to 8 drivers. No timers. Just smash.',
+  'Smash the other cars. Most smashes wins!',
+  'Up to 8 drivers online. Same colour, same team.',
   'Oil barrels chain-react. Line them up.',
   'Five hits and the cage-ball blows.',
   'Twelve hats are hidden in the glade.',
@@ -78,6 +79,26 @@ function render(now) {
 }
 requestAnimationFrame(render);
 els.boot.addEventListener('scroll', () => resetScroll(els.boot)); // older browsers without overflow: clip
+
+// ------------------------------------------------------------------ how to play (the i button, and HOW TO PLAY in the in-game menu)
+const howTo = $('howTo');
+let howFrom = null;
+const openHow = (open) => {
+  howTo.hidden = !open;
+  if (open) { howFrom = document.activeElement; $('htOk').focus({ preventScroll: true }); }
+  else if (howFrom && howFrom.focus) howFrom.focus({ preventScroll: true });
+};
+$('btnInfo').addEventListener('click', () => openHow(true));
+$('btnHowIn').addEventListener('click', () => openHow(true));
+$('htClose').addEventListener('click', () => openHow(false));
+$('htOk').addEventListener('click', () => openHow(false));
+howTo.addEventListener('click', (e) => { if (e.target === howTo) openHow(false); });
+window.addEventListener('keydown', (e) => { if (!howTo.hidden && (e.code === 'Escape' || e.code === 'KeyP')) { e.stopImmediatePropagation(); openHow(false); } }, { capture: true });
+// the keys as printed on this keyboard (AZERTY and friends: the game goes by key position)
+try {
+  const p = navigator.keyboard && navigator.keyboard.getLayoutMap && navigator.keyboard.getLayoutMap();
+  if (p) p.then((m) => { for (const k of howTo.querySelectorAll('.kb-only kbd')) { const t = k.textContent; if (t.length === 1 && /[A-Z]/.test(t)) { const v = m.get(`Key${t}`); if (v && v.length === 1) k.textContent = v.toUpperCase(); } } }).catch(() => {});
+} catch { /* not allowed here */ }
 
 let tipI = 0;
 const tipTimer = setInterval(() => {
@@ -287,6 +308,7 @@ async function boot() {
     const name = nameEl.value.trim().replace(/[<>&]/g, '') || game.account.name || 'Driver';
     ls.set('name', name);
     $('acctChip').hidden = true;
+    $('btnInfo').hidden = true; // in the glade it lives in the ≡ menu
     // solo, or (online) the room we're already in; ?autostart joins/makes q.room and drives straight in
     game.begin(e, { name, mode, code: roomEl.value, bots: -1, map: mode === 'solo' ? soloMap : undefined }); // the gesture lets us go fullscreen
     els.boot.classList.add('fade');
@@ -326,6 +348,9 @@ async function boot() {
     try { sessionStorage.setItem('hsg.invited', 'instant'); } catch { /* */ }
     showLobby(true); setLobbyMode('create'); newPrivate = true;
     joinRoom('create', freshCode());
+  } else if (q.has('firstrun') || (!navigator.webdriver && ls.get('drives', null) === null)) {
+    // a brand-new player skips the menu: straight into the glade, where the coach shows the controls
+    begin(null, 'solo');
   }
   // a friend invites us while the game is open: on the menu, straight in; while driving or in another
   // room, reload into theirs (the reload leaves the old room cleanly)

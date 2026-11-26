@@ -35,19 +35,34 @@
   <div id="feed" aria-live="polite"></div>
   <div id="meters" hidden>
     <div id="gadget" hidden></div>
-    <div id="hpBar">HP    [##########]</div>
-    <div id="boostBar">BOOST [##########]</div>
+    <div class="meter hp" id="hpBar"><span class="ml">HP</span><span class="mt"><i id="hpFill"></i></span></div>
+    <div class="meter boost" id="boostBar"><span class="ml">BOOST</span><span class="mt"><i id="boostFill"></i></span></div>
   </div>
   <div id="toast" hidden></div>
+  <!-- big centre call-outs: SMASH!, DOUBLE SMASH!, GO! -->
+  <div id="pop" hidden><b id="popT"></b><small id="popS"></small></div>
+  <!-- first drive: a short coach (drive, boost, hop, smash), skippable -->
+  <div id="coach" hidden>
+    <div class="coach-card">
+      <p class="coach-step" id="coachStep">1 / 4</p>
+      <div class="coach-keys" id="coachKeys"></div>
+      <p class="coach-text" id="coachText"></p>
+      <div class="coach-bar"><i id="coachFill"></i></div>
+    </div>
+    <button id="coachSkip">SKIP TUTORIAL &#8250;</button>
+  </div>
   <!-- the room's lobby: who's here, colours (same colour = same team), the host's START -->
   <section id="roomLobby" hidden aria-label="Room lobby">
     <div class="rl-card">
       <header class="lobby-head"><button class="back" id="rlLeave">&#8249; LEAVE</button><h2 id="rlTitle">ROOM</h2><button class="rl-code" id="rlCode" title="Copy the code"></button></header>
+      <div class="rl-col">
       <p class="rl-status" id="rlStatus"></p>
       <p class="rl-map" id="rlMapInfo"></p>
       <ul class="rl-players" id="rlPlayers"></ul>
       <div class="rl-row"><span class="lbl">COLOUR</span><div class="rl-colors" id="rlColors"></div></div>
       <p class="rl-teams" id="rlTeams"></p>
+      </div>
+      <div class="rl-col">
       <div class="rl-host" id="rlHost">
         <div class="chips map-chips" id="rlMap"><span class="lbl">MAP</span><button data-m="glade">GLADE</button><button data-m="crater">MOON</button><button data-m="bog">BOG</button><button data-m="quarry">QUARRY</button><button data-m="graveyard">GRAVES</button><button data-m="hallow">HALLOW</button></div>
         <div class="chips" id="rlVis"><span class="lbl">ROOM</span><button data-v="0">PUBLIC</button><button data-v="1">PRIVATE</button></div>
@@ -57,6 +72,7 @@
       <p class="rl-guest" id="rlGuest"></p>
       <button class="mbtn wide rl-invite" id="rlInvite">INVITE FRIENDS</button>
       <div class="rl-actions"><button class="mbtn" id="rlGarage">GARAGE</button><button class="mbtn go" id="rlGo">START</button></div>
+      </div>
     </div>
   </section>
   <div id="matchEnd" hidden>
@@ -64,7 +80,9 @@
       <p class="me-k" id="meK">MATCH OVER</p>
       <h2 id="meWinner"></h2>
       <table><tbody id="meRows"></tbody></table>
+      <p class="me-coins" id="meCoins"></p>
       <p class="me-next" id="meNext"></p>
+      <button class="mbtn go wide" id="meAgain" hidden>NEXT ROUND</button>
     </div>
   </div>
   <div id="board" hidden>
@@ -101,7 +119,9 @@
   <div id="settings" hidden>
     <div class="rl-card set-card">
       <header class="lobby-head"><button class="back" id="btnClose">&#8249; BACK</button><h2>MENU</h2><span class="rl-code" id="roomCodeIn" hidden></span></header>
+      <div class="rl-col">
       <div class="rl-actions"><button class="mbtn" id="btnGarageIn">GARAGE</button><button class="mbtn" id="btnLeave">LEAVE</button></div>
+      <button class="mbtn wide" id="btnHowIn">HOW TO PLAY</button>
       <div class="set-sec" id="mapBox" hidden>
         <div class="chips map-chips" id="optMap"><span class="lbl">MAP</span><button data-m="endless">ENDLESS</button><button data-m="glade">GLADE</button><button data-m="crater">MOON</button><button data-m="bog">BOG</button><button data-m="quarry">QUARRY</button><button data-m="graveyard">GRAVES</button><button data-m="hallow">HALLOW</button></div>
         <p class="map-blurb" id="mapBlurbIn"></p>
@@ -112,6 +132,8 @@
         <div class="chips" id="optPrivate"><span class="lbl">ROOM</span><button data-v="0">PUBLIC</button><button data-v="1">PRIVATE</button></div>
         <p class="map-blurb" id="roomHintIn"></p>
       </div>
+      </div>
+      <div class="rl-col">
       <div class="set-sec">
         <label class="set-row"><span class="lbl">MUSIC</span><input type="range" id="optMusic" min="0" max="100" step="5" value="55" aria-label="Music volume" /></label>
         <label class="set-row"><span class="lbl">SOUND</span><input type="range" id="optSfx" min="0" max="100" step="5" value="100" aria-label="Sound volume" /></label>
@@ -123,9 +145,7 @@
         <div class="chips" id="optPalette"><span class="lbl">LOOK</span><button data-v="color">COLOUR</button><button data-v="mono">MONO</button></div>
         <div class="chips" id="optStats"><span class="lbl">STATS</span><button data-v="0">OFF</button><button data-v="1">ON</button></div>
       </div>
-      <details class="set-help"><summary>CONTROLS</summary>
-        <p>A / D drive (the other way brakes, then turns) · W or Shift boost · Space hop · E roof gadget · Q bumper gadget · F crate power-up · H horn · L headlight flash · R flip · in the air, left/right spins you · hold Tab for scores · Esc or P menu · mouse wheel zooms.<br />Gamepad: stick drive · RT boost · A hop · X roof · B bumper · Y horn · Start flip.</p>
-      </details>
+      </div>
     </div>
   </div>
 
@@ -174,6 +194,48 @@
       <p class="g-msg" id="aMsg"></p>
     </div>
   </section>
+
+  <!-- how to play (the i button on the start page, HOW TO PLAY in the in-game menu) -->
+  <section id="howTo" hidden aria-label="How to play">
+    <div class="ht-card">
+      <header class="ht-head"><h2>HOW TO PLAY</h2><button class="ht-x" id="htClose" aria-label="Close">&#10005;</button></header>
+      <div class="ht-goal">
+        <b>SMASH THE OTHER CARS!</b>
+        <p>Ram them at speed, land on them from above, or blow them up with barrels and gadgets. Every smash is a point. <b>Most smashes when the clock hits 0:00 wins the round.</b> Wrecked? You're back in 2 seconds.</p>
+      </div>
+      <h3>CONTROLS</h3>
+      <ul class="ht-keys kb-only">
+        <li><span><kbd>A</kbd><kbd>D</kbd> <i>or</i> <kbd>&#9664;</kbd><kbd>&#9654;</kbd></span>Drive. Press the other way to brake and turn round.</li>
+        <li><span><kbd>W</kbd> <i>or</i> <kbd class="w">SHIFT</kbd></span>Boost (it refills by itself)</li>
+        <li><span><kbd class="w">SPACE</kbd></span>Hop. In the air, left / right spins you: land flips for coins!</li>
+        <li><span><kbd>E</kbd></span>Roof gadget (wrecking ball, grabby hands, mortar...)</li>
+        <li><span><kbd>Q</kbd></span>Bumper gadget (boxing glove, harpoon, oil...)</li>
+        <li><span><kbd>F</kbd></span>Use a crate power-up</li>
+        <li><span><kbd>R</kbd></span>Flip back upright</li>
+        <li><span><kbd>H</kbd></span>Horn</li>
+        <li><span><kbd class="w">TAB</kbd></span>Hold for the scoreboard</li>
+        <li><span><kbd>P</kbd> <i>or</i> <kbd class="w">ESC</kbd></span>Menu, garage, sound</li>
+      </ul>
+      <ul class="ht-keys touch-only">
+        <li><span><kbd>&#9664;</kbd><kbd>&#9654;</kbd></span>Hold to drive. The other way brakes and turns round.</li>
+        <li><span><kbd class="w">BOOST</kbd></span>Go fast (it refills by itself)</li>
+        <li><span><kbd class="w">HOP</kbd></span>Jump. Spin in the air with &#9664; &#9654; for flips</li>
+        <li><span><kbd class="w">ROOF</kbd> <kbd class="w">BUMPER</kbd></span>Fire your gadgets</li>
+        <li><span><kbd class="w">FLIP</kbd></span>Back upright &nbsp;&middot;&nbsp; <b>&#8801;</b> menu</li>
+      </ul>
+      <p class="ht-pad">Gamepad: left stick drive &middot; RT boost &middot; A hop &middot; X roof &middot; B bumper &middot; Y horn &middot; Start flip</p>
+      <h3>TIPS</h3>
+      <ul class="ht-tips">
+        <li><b>Crates</b> hold power-ups: bombs, rockets, shockwave horns.</li>
+        <li><b>Barrels</b> explode. Push them into a crowd!</li>
+        <li><b>Coins</b> buy new rides, wheels, gadgets and hats in the <b>GARAGE</b>.</li>
+        <li><b>CO-OP</b>: play online with up to 8 friends. Same colour = same team.</li>
+        <li>12 <b>hats</b> are hidden in the Endless Glade. Find them all!</li>
+      </ul>
+      <button class="mbtn go wide" id="htOk">GOT IT</button>
+    </div>
+  </section>
+  <button id="btnInfo" aria-label="How to play" title="How to play">i</button>
 
   <!-- Loading screen + garage: pure HTML/CSS/SVG, visible before any JS runs -->
   <div id="boot">
@@ -274,7 +336,7 @@
       </section>
 
       <button id="btnRetry" hidden>RETRY</button>
-      <p class="sub" id="tip">Up to 8 drivers. No timers. Just smash.</p>
+      <p class="sub" id="tip">Smash the other cars. Most smashes wins!</p>
       <noscript><p>Fogbash needs JavaScript.</p></noscript>
     </div>
   </div>

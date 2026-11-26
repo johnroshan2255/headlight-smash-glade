@@ -36,7 +36,7 @@ uniform vec2 uRes;
 uniform float uMono;
 vec3 sky(vec2 uv) {
   float t = length((uv - vec2(0.5, 0.5)) / vec2(0.95, 0.74));
-  vec3 c0 = vec3(0.40, 0.45, 0.435), c1 = vec3(0.247, 0.29, 0.278), c2 = vec3(0.102, 0.122, 0.114), c3 = vec3(0.039, 0.047, 0.043);
+  vec3 c0 = vec3(0.58, 0.64, 0.62), c1 = vec3(0.42, 0.48, 0.46), c2 = vec3(0.22, 0.26, 0.25), c3 = vec3(0.12, 0.14, 0.135);
   vec3 c = t < 0.38 ? mix(c0, c1, t / 0.38) : t < 0.78 ? mix(c1, c2, (t - 0.38) / 0.4) : mix(c2, c3, clamp((t - 0.78) / 0.22, 0.0, 1.0));
   float l = dot(c, vec3(0.3, 0.59, 0.11));
   return mix(c, vec3(l) * vec3(0.98, 1.0, 1.0), uMono);
@@ -46,10 +46,10 @@ uniform uRes: vec2f;
 uniform uMono: f32;
 fn sky(uv: vec2f) -> vec3f {
   let t = length((uv - vec2f(0.5, 0.5)) / vec2f(0.95, 0.74));
-  let c0 = vec3f(0.40, 0.45, 0.435);
-  let c1 = vec3f(0.247, 0.29, 0.278);
-  let c2 = vec3f(0.102, 0.122, 0.114);
-  let c3 = vec3f(0.039, 0.047, 0.043);
+  let c0 = vec3f(0.58, 0.64, 0.62);
+  let c1 = vec3f(0.42, 0.48, 0.46);
+  let c2 = vec3f(0.22, 0.26, 0.25);
+  let c3 = vec3f(0.12, 0.14, 0.135);
   var c = mix(c2, c3, clamp((t - 0.78) / 0.22, 0.0, 1.0));
   if (t < 0.78) { c = mix(c1, c2, (t - 0.38) / 0.4); }
   if (t < 0.38) { c = mix(c0, c1, t / 0.38); }
@@ -185,14 +185,14 @@ void main(void) {
     vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
     if (n.z < 0.0) n = -n;
     vec3 alb = vCol;
-    alb = mix(vec3(dot(alb, vec3(0.3, 0.59, 0.11))), alb, 0.78);
+    alb = mix(vec3(dot(alb, vec3(0.3, 0.59, 0.11))), alb, 0.95);
     float blot = vnoise(vModel.xy * 6.0 + vModel.z * 4.3);
     float scratch = vnoise(vec2(vModel.x * 2.5 + vModel.z * 1.7, vModel.y * 24.0));
     alb *= 0.74 + 0.34 * blot;
     alb = mix(alb, alb * 1.4 + 0.035, smoothstep(0.76, 0.86, scratch) * 0.55);
     alb *= mix(0.62, 1.0, smoothstep(-0.55, 0.25, vModel.y));
     float light = 0.4 + 0.6 * clamp(n.y * 0.7 + 0.45, 0.0, 1.0);
-    vec3 lit = alb * (sky(uv) * 1.3 + 0.05) * light;
+    vec3 lit = alb * (vec3(0.6, 0.64, 0.62) + sky(uv) * 0.5) * light; // their own steady light: cars read anywhere on screen
     base = mix(base, lit, uPaint);
     tint = mix(vec3(1.0), 0.45 + alb * 1.6, uPaint);
   }
@@ -235,14 +235,14 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
     if (n.z < 0.0) { n = -n; }
     let m = input.vModel;
     var alb = input.vCol;
-    alb = mix(vec3f(dot(alb, vec3f(0.3, 0.59, 0.11))), alb, 0.78);
+    alb = mix(vec3f(dot(alb, vec3f(0.3, 0.59, 0.11))), alb, 0.95);
     let blot = vnoise(m.xy * 6.0 + vec2f(m.z * 4.3));
     let scratch = vnoise(vec2f(m.x * 2.5 + m.z * 1.7, m.y * 24.0));
     alb = alb * (0.74 + 0.34 * blot);
     alb = mix(alb, alb * 1.4 + vec3f(0.035), smoothstep(0.76, 0.86, scratch) * 0.55);
     alb = alb * mix(0.62, 1.0, smoothstep(-0.55, 0.25, m.y));
     let light = 0.4 + 0.6 * clamp(n.y * 0.7 + 0.45, 0.0, 1.0);
-    let lit = alb * (sky(uvf) * 1.3 + vec3f(0.05)) * light;
+    let lit = alb * (vec3f(0.6, 0.64, 0.62) + sky(uvf) * 0.5) * light;
     base = mix(base, lit, uniform.uPaint);
     tint = mix(vec3f(1.0), vec3f(0.45) + alb * 1.6, uniform.uPaint);
   }
@@ -417,8 +417,8 @@ void main(void) {
   vec3 c = texture2D(uScene, uv).rgb;
   vec2 q = (uv - vec2(0.5, 0.54)) * vec2(uScreen.x / uScreen.y, 1.0);
   float vig = 1.0 - smoothstep(0.45, 1.25, length(q) * (uScreen.x > uScreen.y ? 1.0 : 1.4));
-  c *= mix(0.28, 1.0, vig);
-  float grain = (hash12(floor(gl_FragCoord.xy) + fract(uTime * 7.31) * 811.0) - 0.5) * 0.045;
+  c *= mix(0.62, 1.0, vig);
+  float grain = (hash12(floor(gl_FragCoord.xy) + fract(uTime * 7.31) * 811.0) - 0.5) * 0.016;
   gl_FragColor = vec4(max(c + grain, vec3(0.0)), 1.0);
 }`;
 const BLIT_FS_WGSL = `
@@ -438,8 +438,8 @@ fn fragmentMain(input: FragmentInput) -> FragmentOutput {
   var portrait = 1.0;
   if (uniform.uScreen.x <= uniform.uScreen.y) { portrait = 1.4; }
   let vig = 1.0 - smoothstep(0.45, 1.25, length(q) * portrait);
-  c = c * mix(0.28, 1.0, vig);
-  let grain = (hash12(floor(input.position.xy) + vec2f(fract(uniform.uTime * 7.31) * 811.0)) - 0.5) * 0.045;
+  c = c * mix(0.62, 1.0, vig);
+  let grain = (hash12(floor(input.position.xy) + vec2f(fract(uniform.uTime * 7.31) * 811.0)) - 0.5) * 0.016;
   output.color = vec4f(max(c + vec3f(grain), vec3f(0.0)), 1.0);
   return output;
 }`;

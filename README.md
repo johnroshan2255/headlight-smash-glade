@@ -2,9 +2,9 @@
 
 Drop-in/drop-out multiplayer demolition for up to **8 tiny headlight buggies**, seen from the side
 in an endless, foggy glade. Everything is a black silhouette against layered grey-teal mist. The only
-colour comes from headlight beams and amber explosions. There are no timers, no rounds and no
-monsters. You smash things, get smashed, and respawn two seconds later after your hat pops off
-like a cork.
+colour comes from headlight beams, amber explosions and the cars' own paint. Solo is played in
+2-minute rounds against bots (most smashes wins), online in timed matches. You smash things, get
+smashed, and respawn two seconds later after your hat pops off like a cork.
 
 Built on **PlayCanvas** (WebGL 2 + WebGPU). Multiplayer runs on **Colyseus** (MIT, self-hosted).
 All sounds and music are recorded **CC0 (public domain)** assets from Kenney and OpenGameArt, so there
@@ -38,6 +38,18 @@ VITE_SERVER_URL=wss://<railway-app> npm run crazygames   # CrazyGames zip: relea
 - **happytime()** when you win a match.
 - **The game server** must be reachable from crazygames.com: leave `CORS_ORIGINS` unset on Railway, or add the CrazyGames origins to it.
 - **Local check:** serve `dist-crazygames` on localhost, where the SDK runs in `local` mode (`?muteAudio=true` works there).
+
+**First visit:** a brand-new player skips the menu and lands straight in the Endless Glade with a
+four-step coach: DRIVE, BOOST, HOP (alone, with key pictures that use the player's own keyboard
+layout, or the highlighted touch buttons), then the bots drop in and the job is to SMASH one.
+Each step finishes by doing it, and SKIP TUTORIAL ends it at once. Then round 1 starts.
+
+**Solo rounds:** 2 minutes, a clock at the top, MOST SMASHES WINS. The results show the winner,
+the table and the coins earned, then the next round starts after 10 s (or NEXT ROUND). The glade
+holds still during the results, the ≡ menu and ads. Rooms keep their server-timed matches.
+
+**How to play:** the i button at the top right of the title screen (and HOW TO PLAY in the ≡
+menu) shows the goal, the controls for keyboard or touch, the gamepad and some tips.
 
 The menu has three buttons. **PLAY** drops you into a solo glade with bots, on the map shown under the buttons (‹ › picks Endless Glade, The Glade, Moon Crater, The Bog or The Quarry; the world behind the menu switches to show it). **CO-OP** is for rooms:
 - **JOIN:** lists the public rooms (host name, players, waiting or playing). Tap one to join it. For a private room, type its code.

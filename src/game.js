@@ -114,6 +114,24 @@ export async function startGame(loader) {
     setTimeout(() => el.remove(), 6000);
   };
 
+  // key names as printed on this keyboard (an AZERTY board shows Q and Z where QWERTY has A and W):
+  // the controls go by key position, so the hints name the key that's actually there
+  const KEY_NAMES = { KeyA: 'A', KeyD: 'D', KeyW: 'W', KeyE: 'E', KeyQ: 'Q', KeyF: 'F', KeyH: 'H', KeyR: 'R', KeyP: 'P', Space: 'SPACE', ShiftLeft: 'SHIFT' };
+  let keyLayout = null;
+  try { const p = navigator.keyboard && navigator.keyboard.getLayoutMap && navigator.keyboard.getLayoutMap(); if (p) p.then((m) => { keyLayout = m; }).catch(() => {}); } catch { /* not allowed in this frame */ }
+  const keyName = (code) => { const k = keyLayout && keyLayout.get(code); return k && k.length === 1 && /\S/.test(k) ? k.toUpperCase() : KEY_NAMES[code] || code.replace(/^Key/, ''); };
+
+  // big centre call-outs (SMASH!, DOUBLE SMASH!, GO!, ROUND 2)
+  let popTimer = 0;
+  function popText(big, small = '', hot = false) {
+    const el = $('pop');
+    $('popT').textContent = big; $('popS').textContent = small;
+    el.classList.toggle('hot', hot);
+    el.hidden = false; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    clearTimeout(popTimer); popTimer = setTimeout(() => { el.hidden = true; }, 1700);
+  }
+  let combo = 0, comboT = 0;
+
   // ---------------------------------------------------------------- cars
   const cars = new Map();
   const bots = new Map();
@@ -366,7 +384,7 @@ export async function startGame(loader) {
     roomLobby.hide();
     if (m.n === matchN) return;
     const first = !matchN;
-    matchN = m.n;
+    matchN = m.n; coins0 = account.coins;
     // a fresh match: on the room's map, everyone back on zero, in their (maybe new) colours, dropping in fresh
     applyMap(roomMap());
     for (const c of allCars()) c.score = 0;
@@ -395,15 +413,127 @@ export async function startGame(loader) {
       const mine = G.rows.some((r) => r.me), who = G.rows.length > 1 ? `${label(G)} <small>${G.rows.map((r) => esc(r.name)).join(', ')}</small>` : `${esc(G.rows[0].name)}${G.rows[0].bot ? ' <small>bot</small>' : ''}`;
       return `<tr class="${mine ? 'me' : ''}${winners.includes(G) ? ' first' : ''}"><td>${rank}</td><td><i class="dot" style="--c:${net.online ? teamCSS(G.k) : 'transparent'}"></i>${who}</td><td>${G.score}</td></tr>`;
     }).join('');
+    $('meK').textContent = net.online ? 'MATCH OVER' : `ROUND ${m.n} OVER`;
+    $('meCoins').textContent = '';
     $('matchEnd').hidden = false;
     if (!matchN) return; // joined during the break: no coins for a match we didn't play
     const mySide = sides.find((G) => G.rows.some((r) => r.me)), myRank = mySide ? 1 + sides.filter((G) => G.score > mySide.score).length : 99;
-    if (mySide && winners.includes(mySide)) { earn('win'); toast(teamMode && mySide.rows.length > 1 ? 'Your team won the match!' : 'You won the match!', 3); sfx.play('jingle'); portal.happytime(); }
+    const what = net.online ? 'match' : 'round';
+    if (mySide && winners.includes(mySide)) { earn('win'); toast(teamMode && mySide.rows.length > 1 ? `Your team won the ${what}!` : `You won the ${what}!`, 3); sfx.play('jingle'); portal.happytime(); }
     else if (mySide && mySide.score > 0 && myRank <= 3) earn('podium');
     else earn('match');
+    const got = account.coins - coins0;
+    $('meCoins').textContent = got > 0 ? `+${got} ¢ this ${what}` : '';
     portal.midgameAd(); // the results: a break between matches (nobody is driving)
   }
+  // ---------------------------------------------------------------- solo rounds
+  // Solo is played in 2-minute rounds against the bots: a clock, a winner, coins, a short break, the next round.
+  const SOLO_ROUND = Number(QUERY.get('round')) || 120, SOLO_BREAK = 10;
+  const soloRounds = !QUERY.has('autostart') || QUERY.has('rounds'); // (the playtests' ?autostart drives untimed)
+  let solo = null, coins0 = 0;
+  function soloStart() {
+    if (!soloRounds || net.online || !me) return;
+    const n = solo ? solo.n + 1 : 1;
+    solo = { n, left: SOLO_ROUND, over: false, next: 0 };
+    matchN = n; lastTick = 0; coins0 = account.coins;
+    $('matchEnd').hidden = true; $('meAgain').hidden = true;
+    if (n > 1) for (const c of allCars()) c.score = 0; // (round 1 keeps the smash that finished the coach)
+    if (n > 1) { for (const c of allCars()) if (c.local) { if (c.wrecked) c.unwreck(pickSpawn(c, c.body.p[0])); c.hp = 100; } sfx.play('jingle'); }
+    popText(n > 1 ? `ROUND ${n}` : 'GO!', `Most smashes in ${Math.round(SOLO_ROUND / 60)} minutes wins`);
+    updateHud(true);
+  }
+  function soloTick(dt) {
+    if (!solo || net.online || portal.adPlaying()) return;
+    if (!solo.over) {
+      solo.left -= dt;
+      if (solo.left <= 0) { solo.left = 0; solo.over = true; solo.next = SOLO_BREAK; showResults({ n: solo.n }); $('meAgain').hidden = false; $('meAgain').focus({ preventScroll: true }); }
+    } else { solo.next -= dt; if (solo.next <= 0) soloStart(); }
+  }
+  $('meAgain').addEventListener('click', () => { if (solo && solo.over && !portal.adPlaying()) { soloStart(); canvas.focus(); } });
+
+  // ---------------------------------------------------------------- first drive: the coach
+  // New players land straight in the glade with a four-step coach: drive, boost, hop, then the bots
+  // drop in and the job is to smash them. Every step finishes by doing it; SKIP ends it at once.
+  const firstRun = !QUERY.has('autostart') && (QUERY.has('firstrun') || (!navigator.webdriver && store.get('tutDone', '') !== '1' && store.get('drives', '0') === '0'));
+  const kbd = (t, wide = false) => `<kbd${wide ? ' class="wide"' : ''}>${t}</kbd>`;
+  const COACH = [
+    { id: 'drive', text: 'DRIVE', keys: () => `${kbd(keyName('KeyA'))}${kbd(keyName('KeyD'))}<span>or</span>${kbd('&#9664;')}${kbd('&#9654;')}`, touchText: 'Hold &#9664; &#9654; to DRIVE', btns: ['btnLeft', 'btnRight'] },
+    { id: 'boost', text: 'BOOST', keys: () => `${kbd(keyName('KeyW'))}<span>or</span>${kbd('SHIFT', true)}`, touchText: 'Hold BOOST to go fast', btns: ['btnBoost'] },
+    { id: 'hop', text: 'HOP', keys: () => kbd('SPACE', true), touchText: 'Tap HOP to jump', btns: ['btnHop'] },
+    { id: 'smash', text: 'RAM THE OTHER CARS TO SMASH THEM!', keys: () => '', touchText: 'RAM THE OTHER CARS TO SMASH THEM!', btns: [] },
+  ];
+  const coach = { on: false, step: 0, prog: 0, t: 0, lastX: 0, wait: 0 };
+  function coachShow() {
+    const S = COACH[coach.step];
+    $('coachStep').textContent = `${coach.step + 1} / ${COACH.length}`;
+    $('coachKeys').innerHTML = touchUI ? '' : S.keys();
+    $('coachKeys').hidden = touchUI || !S.keys();
+    $('coachText').innerHTML = touchUI ? S.touchText : S.text;
+    $('coachFill').style.width = '0%';
+    $('coach').classList.remove('done');
+    for (const id of ['btnLeft', 'btnRight', 'btnBoost', 'btnHop']) $(id).classList.toggle('coach-hi', S.btns.includes(id));
+    $('coach').hidden = false;
+  }
+  function coachStart() {
+    coach.on = true; coach.step = 0; coach.prog = 0; coach.t = 0; coach.wait = 0; coach.lastX = me.body.p[0];
+    syncBots(); // (no bots until the smash step)
+    coachShow();
+  }
+  function coachNext() {
+    if (!coach.on || coach.wait > 0) return;
+    $('coachFill').style.width = '100%';
+    $('coach').classList.add('done');
+    sfx.play('pickup', undefined, { wet: 0 });
+    coach.wait = 0.7; // a beat to see the tick, then the next step
+  }
+  function coachAdvance() {
+    coach.step++; coach.prog = 0; coach.t = 0;
+    if (coach.step >= COACH.length) { coachEnd(); return; }
+    if (COACH[coach.step].id === 'smash') { syncBots(); toast('Here they come!', 2); }
+    coachShow();
+  }
+  function coachEnd() {
+    coach.on = false;
+    store.set('tutDone', '1');
+    $('coach').hidden = true;
+    for (const id of ['btnLeft', 'btnRight', 'btnBoost', 'btnHop']) $(id).classList.remove('coach-hi');
+    syncBots();
+    soloStart();
+    canvas.focus();
+  }
+  $('coachSkip').addEventListener('click', () => { if (coach.on) coachEnd(); });
+  function coachTick(dt) {
+    if (!coach.on || !me) return;
+    if (coach.wait > 0) { coach.wait -= dt; if (coach.wait <= 0) coachAdvance(); return; }
+    const S = COACH[coach.step];
+    coach.t += dt;
+    if (S.id === 'drive') { if (!me.wrecked) coach.prog += Math.min(1, Math.abs(me.body.p[0] - coach.lastX)) / 14; }
+    else if (S.id === 'boost') { if (me.boosting) coach.prog += dt / 0.8; }
+    else if (S.id === 'smash') coach.prog = coach.t / 25; // no smash in 25 s: on with the round anyway
+    coach.lastX = me.body.p[0];
+    $('coachFill').style.width = `${Math.min(100, coach.prog * 100).toFixed(0)}%`;
+    if (coach.prog >= 1) coachNext();
+  }
+
   function updateClock() {
+    if (!net.online) {
+      const el = $('clock');
+      el.hidden = !solo;
+      if (!solo) return;
+      if (solo.over) {
+        el.classList.remove('hot'); el.classList.add('over');
+        $('clockT').textContent = '0:00'; $('clockSub').textContent = 'ROUND OVER';
+        const n = Math.max(0, Math.ceil(solo.next));
+        $('meNext').textContent = n > 0 ? `NEXT ROUND IN ${n}` : 'GET READY';
+        return;
+      }
+      const left = Math.max(0, Math.ceil(solo.left));
+      $('clockT').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      $('clockSub').textContent = 'MOST SMASHES WINS';
+      el.classList.toggle('hot', left <= 15); el.classList.remove('over');
+      if (left <= 10 && left > 0 && left !== lastTick) { lastTick = left; sfx.play('tick', undefined, { vol: 0.9, wet: 0 }); }
+      return;
+    }
     const m = net.online && net.match && net.phase !== 'lobby' && net.match.n > 0 ? net.match : null, el = $('clock');
     el.hidden = !m;
     if (!m) return;
@@ -493,7 +623,14 @@ export async function startGame(loader) {
     const victim = nameOf(msg.id), killer = msg.killer ? nameOf(msg.killer) : null;
     if (msg.torn) { feed(`${msg.torn.map(nameOf).join(' and ')} tore ${victim} in two!`); if (me && msg.torn.includes(me.id)) toast(`You tore ${victim} in two!`, 2); if (me && msg.id === me.id) toast('Torn in two!', 2); return; }
     feed(killer && msg.killer !== msg.id ? `${killer} smashed ${victim}` : `${victim} wrecked`);
-    if (me && msg.killer === me.id && msg.id !== me.id) toast(`SMASHED ${victim.toUpperCase()}`, 1.5);
+    if (me && msg.killer === me.id && msg.id !== me.id && !inBreak && !sameTeam(me, victimCar)) {
+      const now = performance.now();
+      combo = now - comboT < 6000 ? combo + 1 : 1; comboT = now;
+      popText(['SMASH!', 'DOUBLE SMASH!', 'TRIPLE SMASH!', 'RAMPAGE!'][Math.min(3, combo - 1)], victim, true);
+      fx.shake = Math.max(fx.shake, 0.7);
+      if (coach.on && COACH[coach.step].id === 'smash') coachNext();
+    }
+    if (me && msg.id === me.id && killer && msg.killer !== me.id) toast(`Smashed by ${killer}! Back in 2 seconds.`, 2);
   }
 
   // gadgets
@@ -735,6 +872,7 @@ export async function startGame(loader) {
 
   function syncBots() {
     if (!net.isHost) { for (const id of [...bots.keys()]) removeCar(id); return; }
+    if (coach.on && !net.online && COACH[coach.step].id !== 'smash') { for (const id of [...bots.keys()]) removeCar(id); return; } // learning the controls alone first
     const humans = net.online ? net.players.length : 1;
     // online, the room decides: -1 fills the empty seats, otherwise exactly that many (private rooms can have none)
     const setting = net.online ? net.settings.bots : -1;
@@ -792,7 +930,7 @@ export async function startGame(loader) {
   setupFullscreen({ button: $('btnFull'), canvas, touchDevice: touchUI, onChange: () => app.resizeCanvas() });
 
   // ---------------------------------------------------------------- side camera
-  let camX = 0, camY = 2, camZ = info.mobile ? 26 : 30, lead = 0, zoomK = 1;
+  let camX = 0, camY = 2, camZ = info.mobile ? 21 : 23, lead = 0, zoomK = 1; // close enough that the buggies read clearly
   const camPos = new pc.Vec3();
   let camLock = null; // debug: { x, y, z } or { follow: true, z } for close-up checks
   function updateCamera(dt) {
@@ -805,7 +943,7 @@ export async function startGame(loader) {
       const b = me.body;
       lead += ((me.wrecked ? 0 : me.facing * 3.5 + b.v[0] * 0.3) - lead) * (1 - Math.exp(-dt * 1.8));
       const tx = b.p[0] + lead;
-      const ty = b.p[1] + camZ * zoomK * (portrait ? 0.19 : 0.14); // keeps the buggy low in the frame at any zoom
+      const ty = b.p[1] + camZ * zoomK * (portrait ? 0.16 : 0.1); // keeps the buggy low in the frame at any zoom
       zoomK += ((me.wrecked ? 1 : 1 + Math.min(1, me.speed / 22) * 0.2) - zoomK) * (1 - Math.exp(-dt * 1.2));
       camX += (tx - camX) * (1 - Math.exp(-dt * 4));
       camY += (ty - camY) * (1 - Math.exp(-dt * (Math.abs(ty - camY) > 6 ? 5 : 2.6)));
@@ -813,7 +951,7 @@ export async function startGame(loader) {
     let sx = 0, sy = 0;
     const s = fx.shake * fx.shake * 0.5;
     if (s > 0.001) { sx = (Math.random() - 0.5) * s; sy = (Math.random() - 0.5) * s; }
-    const z = camZ * zoomK * (portrait ? 1.9 : 1); // portrait is narrow: pull back to see what's coming
+    const z = camZ * zoomK * (portrait ? 1.5 : 1); // portrait is narrow: pull back to see what's coming
     camPos.set(camX + sx, camY + sy + 0.6, z);
     ascii.sceneCam.setPosition(camPos);
     ascii.sceneCam.lookAt(camX + sx, camY + sy, 0);
@@ -946,14 +1084,14 @@ export async function startGame(loader) {
     if (!force && hudT > 0) return;
     hudT = 0.1;
     if (!me) return;
-    const bar = (v, n = 10) => `${'#'.repeat(Math.round(clamp(v, 0, 1) * n))}${'.'.repeat(n - Math.round(clamp(v, 0, 1) * n))}`;
-    $('hpBar').textContent = `HP    [${bar(me.hp / 100)}]`;
-    $('boostBar').textContent = me.gadget === 'rocket' ? 'BOOST [ROCKET!!!!]' : `BOOST [${bar(me.boost)}]`;
+    $('hpFill').style.width = `${(clamp(me.hp / 100, 0, 1) * 100).toFixed(1)}%`;
+    $('boostFill').style.width = `${(me.gadget === 'rocket' ? 100 : clamp(me.boost, 0, 1) * 100).toFixed(1)}%`;
+    $('boostBar').classList.toggle('rocket', me.gadget === 'rocket');
     $('hpBar').classList.toggle('low', me.hp < 35);
     const g = me.gadget;
     $('gadget').hidden = !g;
     const active = ['mine', 'horn', 'hop'].includes(g);
-    if (g) $('gadget').textContent = `${GADGETS[g].name}  ${Math.ceil(me.gadgetT)}s${active ? (touchUI ? '  · POWER' : '  · F') : ''}`;
+    if (g) $('gadget').textContent = `${GADGETS[g].name}  ${Math.ceil(me.gadgetT)}s${active ? (touchUI ? '  · POWER' : `  · ${keyName('KeyF')}`) : ''}`;
     // the touch buttons follow what's fitted
     const short = (n) => n.split(' ').pop().toUpperCase().slice(0, 8);
     $('btnRoof').hidden = !me.roofG; if (me.roofG) $('btnRoof').textContent = short(ROOF[me.setup.roof].name);
@@ -963,7 +1101,8 @@ export async function startGame(loader) {
     const others = allCars().filter((c) => c !== me && !String(c.id).startsWith('warm') && c.id !== 'preview');
     const place = 1 + others.filter((c) => (c.score | 0) > (me.score | 0)).length;
     const ord = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
-    $('mode').textContent = `SMASHES ${me.score | 0}${others.length && (me.score | 0) > 0 ? ` · ${ord(place)}` : ''}`;
+    const modeHtml = `<b>${me.score | 0}</b><span>SMASH${(me.score | 0) === 1 ? '' : 'ES'}</span>${others.length && (me.score | 0) > 0 ? `<em>${ord(place)}</em>` : ''}`;
+    if ($('mode').innerHTML !== modeHtml) $('mode').innerHTML = modeHtml;
     $('hats').hidden = mapId() !== 'endless';
     $('hats').textContent = `HATS ${Math.max(0, account.profile ? account.profile.owned.hats.length - 1 : sandbox.ownedHats.size)}/12`;
     $('coins').hidden = true; // coins pop up when you earn them; the total is in the menu and garage
@@ -1077,10 +1216,10 @@ export async function startGame(loader) {
     // if (input.sightPressed) setAscii(!asciiOn);
     if (forcedAsciiT > 0) { forcedAsciiT -= dt; if (!ascii.ascii) { ascii.setOptions({ ascii: true }); resized(); } if (forcedAsciiT <= 0 && !asciiOn) { ascii.setOptions({ ascii: false }); resized(); } }
     if (started && !paused && me && dt > 1e-5 && roomLobby.open) { me.input.dir = 0; me.input.boost = false; } // in the room's lobby: hands off
-    else if (started && !paused && me && dt > 1e-5 && !(portal.adPlaying() && !net.online)) { // (solo pauses for an ad)
+    else if (started && !paused && me && dt > 1e-5 && !(portal.adPlaying() && !net.online) && !(solo && solo.over && !net.online)) { // (solo pauses for an ad and between rounds)
       const inp = me.input;
       inp.dir = input.dir; inp.boost = input.boost;
-      if (input.hopPressed) inp.hop = true;
+      if (input.hopPressed) { inp.hop = true; if (coach.on && COACH[coach.step].id === 'hop') coachNext(); } // (the coach counts the press: mid-air it can't hop yet)
       if (input.resetPressed) inp.reset = true;
       if (input.roofPressed) { if (me.roofG) me.roofG.fire(); else useGadget(me); }
       if (input.bumperPressed && me.bumperG) me.bumperG.fire();
@@ -1096,7 +1235,7 @@ export async function startGame(loader) {
         sandbox.checkLocal(c, c.isBot, dt);
         c.wet = physics.inWater(c.body.p[0], c.body.p[1]);
         if (c.wet && !wasWet && Math.abs(c.body.v[1]) > 3) { fx.splash(c.body.p[0], terrain.water(c.body.p[0]) ?? c.body.p[1], 12); sfx.play('splash', { x: c.body.p[0], z: 0 }); }
-        if (c.hopped) { c.hopped = false; sfx.play('boing', { x: c.body.p[0], z: 0 }, { vol: 0.5 }); }
+        if (c.hopped) { c.hopped = false; sfx.play('boing', { x: c.body.p[0], z: 0 }, { vol: 0.5 }); if (c === me && coach.on && COACH[coach.step].id === 'hop') coachNext(); }
         if (c.isBot) c.flash = Math.max(0, c.flash - dt * 3);
       }
       const now = performance.now();
@@ -1117,6 +1256,7 @@ export async function startGame(loader) {
       // dust behind spinning wheels
       for (const c of allCars()) if (!c.wrecked && c.grounded && c.speed > 6 && !physics.inWater(c.body.p[0], c.body.p[1]) && Math.random() < dt * c.speed * 0.7) fx.dust(c.body.p[0] - c.facing * 0.9, terrain.height(c.body.p[0]), c.facing);
       sendCars(dt);
+      coachTick(dt);
       sfx.setEngine(me.speed / me.spec.top, Math.abs(input.dir), me.boosting, me.wrecked);
       if (me.boosting && !wasBoosting) sfx.play('whoosh', undefined, { vol: 0.5 });
       wasBoosting = me.boosting;
@@ -1143,6 +1283,7 @@ export async function startGame(loader) {
     if (toastTimer > 0) { toastTimer -= dt; shownFor += dt; if (toastQueue.length && shownFor > 1.8) { const [m, t] = toastQueue.shift(); showLine(m, t); } else if (toastTimer <= 0) $('toast').hidden = true; } else if (toastQueue.length) { const [m, t] = toastQueue.shift(); showLine(m, t); }
     $('board').hidden = !input.board;
     if (input.board) updateBoard();
+    if (started && !paused && $('settings').hidden && $('garageUI').hidden) soloTick(dt);
     if (started) { updateSmoke(); updateHud(); updateTags(); updatePointers(); updateClock(); }
     // CrazyGames: "gameplay" is only actual driving, not the ≡ menu, the garage, the room's lobby or the results
     portal.setPlaying(started && !paused && $('settings').hidden && $('garageUI').hidden && !roomLobby.open && $('matchEnd').hidden);
@@ -1153,7 +1294,7 @@ export async function startGame(loader) {
     }
   });
 
-  window.__hsg = { app, world, physics, sandbox, cars, net, fx, input, account, applySetup, preview, map: () => ({ id: mapId(), bounds: mapBounds(), gravity: mapInfo().gravity, moon: !!(moonE && moonE.enabled) }), applyMap, spawnNear: (x) => pickSpawn(me, x), get me() { return me; }, bots, get cam() { return { x: camX, y: camY, z: camZ }; }, lockCam(L) { camLock = L; },
+  window.__hsg = { app, world, physics, sandbox, cars, net, fx, input, account, applySetup, preview, get solo() { return solo; }, get coach() { return coach; }, soloStart, map: () => ({ id: mapId(), bounds: mapBounds(), gravity: mapInfo().gravity, moon: !!(moonE && moonE.enabled) }), applyMap, spawnNear: (x) => pickSpawn(me, x), get me() { return me; }, bots, get cam() { return { x: camX, y: camY, z: camZ }; }, lockCam(L) { camLock = L; },
     /** tests: give a bot a fixed loadout (rebuilds its car in place) */
     botSetup(id, setup) {
       const old = cars.get(id), brain = bots.get(id);
@@ -1248,10 +1389,14 @@ export async function startGame(loader) {
       roomLobby.hide();
       seenPhase = net.phase;
       if (net.online && net.match) { if (net.phase === 'playing') matchN = net.match.n; else onMatch(net.match); }
-      // the controls, for your first couple of drives only
+      // the controls: a new player's first solo drive is coached; otherwise a reminder line for the first few drives
       const drives = Number(store.get('drives', '0')) + 1;
       store.set('drives', String(drives));
-      if (drives <= 2) setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ menu' : 'A/D drive · W boost · Space hop · E / Q gadgets · Esc menu', 4), 800);
+      if (!net.online && firstRun) coachStart();
+      else {
+        if (drives <= 3) setTimeout(() => toast(touchUI ? '◀ ▶ drive · BOOST · HOP · ≡ menu' : `${keyName('KeyA')} / ${keyName('KeyD')} drive · ${keyName('KeyW')} boost · Space hop · ${keyName('KeyE')} / ${keyName('KeyQ')} gadgets · ${keyName('KeyP')} menu`, 4), 800);
+        if (!net.online) soloStart();
+      }
       updateHud(true);
     },
   };
